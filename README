@@ -1,0 +1,40 @@
+cas is an experiment with content addressable storage.
+
+The idea is along the lines of:
+
+https://www.usenix.org/legacy/publications/library/proceedings/usenix03/tech/full_papers/tolia/tolia_html/usenix03.html
+
+
+todo:
+
+cas cli tool 'cas'
+
+  cas sync src dst
+  
+    Compare content of src and dst, like rsync, copy all from src that
+        are absent in dst
+        
+        --delete
+            Remove any in dst that are not in src
+            
+        --dry-run
+            Don't really do it
+            
+        --expiry
+            Set expiry on new objects
+            
+  cas diff src dst
+  
+    Produce a listing of the differences, as content ids,
+    as a description of what a 'cas sync --delete src dst' would do
+    +id means add to dst, -id means remove from dst
+    
+  cas copy ids src dst
+  
+    Copy specified ids from src to dst
+    
+        ids often specified as a list of ids in a file, or from stdin
+        src usually exists, dst often new
+        
+
+        

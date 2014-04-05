@@ -1,0 +1,170 @@
+#!/usr/bin/python
+
+import sys
+import os
+import re
+from optparse import OptionParser
+from Crypto.Hash import MD5
+import csv
+import stat
+
+def md5sum(p):
+    bsize = 1024*1024*128
+
+    m = MD5.new()
+
+    try:
+        f = os.open(p,os.O_RDONLY)
+    except Exception,e:
+        return None
+
+    while True:
+        try:
+            buffer = os.read(f,bsize)
+        except Exception,e:
+            try:
+                os.close(f)
+            except:
+                pass
+            return None
+
+        if not buffer:
+            break
+        m.update(buffer)
+
+    os.close(f)
+
+    return m.hexdigest()
+
+
+p = OptionParser(usage="%prog [options] A B")
+p.add_option("-d","--duplicates",help="List duplicated files",
+        dest="dups",action="store_true")
+p.add_option("-u","--uniques",help="List unique files",
+        dest="uniqs",action="store_true")
+p.add_option("","--mv",help="Move missing files from A to B",
+        dest="mv",action="store_true")
+p.add_option("","--cp",help="Copy missing files from A to B",
+        dest="cp",action="store_true")
+p.add_option("","--rm",help="Remove redundant files from A",
+        dest="rm",action="store_true")
+p.add_option("-v","--verbose",help="Be more verbose",
+        dest="verbose",action="store_true")
+
+(opts,args) = p.parse_args()
+
+_verbose = opts.verbose
+
+def verbose(m):
+    if _verbose: print m
+
+if len(args) > 2:
+    p.error("Too many parameters")
+
+samefile = {}
+
+def readsums(path,id):
+    for line in open(path):
+        line = line.strip()
+        md5 = line[:32]
+        path = line[34:]
+
+        if md5 not in samefile:
+            samefile[md5] = set()
+
+        samefile[md5].add(id+path)
+
+def makesums(r,id):
+    for (d,k,fs) in os.walk(r):
+        verbose("dir %s" % (d))
+        # Look for the cache file
+        c = {}
+        wc = False
+        try:
+            cf = csv.reader(open(os.path.join(d,".md5sums")))
+            for row in cf:
+                c[row[0]]=row[1:]
+            verbose("loaded cache for %s" % (d))
+        except Exception,e:
+#            print "cache read:",e
+            pass
+
+        for f in fs:
+            if f == ".md5sums": continue
+            p = os.path.join(d,f)
+            if not os.path.isfile(p): continue
+            verbose("  %s" % (f))
+            s = os.stat(p)
+            fmt = int(s[stat.ST_MTIME])
+            size = s[stat.ST_SIZE]
+            if f in c:
+                # check mtime in cache and of file
+                # if no match, dump it
+                (mt,s) = c[f]
+                mt = int(mt)
+                if mt != fmt:
+                    del c[f]
+                    wc = True
+                    verbose("cache stale (%d,%d) for %s" % (fmt,mt,p))
+                else:
+                    verbose("cache hit for %s" % (p))
+            else:
+                verbose("cache miss for %s" % (p))
+
+            if f in c:
+                s = c[f][1]
+            else:
+                s = md5sum(p)
+                c[f] = (fmt,s)
+                wc = True
+
+            if s not in samefile:
+                samefile[s] = set()
+            samefile[s].add(id+p)
+
+        # Write updated cache file
+
+        if wc:
+            try:
+                cf = csv.writer(open(os.path.join(d,".md5sums"),"w"))
+                for (f,v) in c.items():
+                    cf.writerow([f,]+list(v))
+            except Exception,e:
+                print "cache write:",e
+                pass
+
+def show(m,s):
+    print "#",m
+    print "#  "+("\n#  ".join(s))
+    print
+
+for p in zip(args,("a:","b:")):
+    makesums(*p)
+
+b = args[1]
+
+for (m,s) in samefile.items():
+    n = len(s)
+
+    if n==1:
+        if opts.uniqs: show(m,s)
+        f = s.pop()
+        id = f[0]
+        f = f[2:]
+        if id != 'a': continue
+
+        if opts.cp: print "cp %s %s" % (f,os.path.join(b,os.path.basename(f)))
+        elif opts.mv: print "mv %s %s" % (f,os.path.join(b,os.path.basename(f)))
+
+        continue
+
+    if n > 1:
+
+        if opts.dups: show(m,s)
+
+        if opts.rm:
+
+            f = [f[2:] for f in s if f.startswith('a:')][0]
+
+            print "rm %s" % (f)
+
