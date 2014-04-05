@@ -4,9 +4,15 @@
 
 import xc
 
-class ItemNotFoundError(xc.ErrorXC):
+class CasXC(xc.BaseXC):
     pass
     
-class ItemCorruptedError(xc.ErrorXC):
+class CasErrorXC(CasXC):
+    pass
+    
+class ItemNotFoundError(CasErrorXC):
+    pass
+    
+class ItemCorruptedError(CasErrorXC):
     pass
     
