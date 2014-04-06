@@ -20,6 +20,10 @@ def test_relative():
         
         assert expire_relative(seconds=1,minutes=1,hours=1,days=1) == (3600*24)+3600+60+1
 
+        # relative expiry coercion
+        
+        assert expiry(10) == 10
+
 def test_never():
     assert not expired(NEVER)
     

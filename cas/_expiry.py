@@ -35,6 +35,10 @@ def expiry(e):
         x = int(e)
         if x < 0:
             raise InvalidExpiryError(expiry=e)
+        # Anything less than our magic number is
+        # assumed to be a relative expiry 
+        if x < EXPIRED:
+            x += int(time.time())
         return x
     except:
         pass

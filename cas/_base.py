@@ -2,10 +2,16 @@
 # base classes for cas
 #
 
-from _xc import CasErrorXC
+from _xc import CasErrorXC, ItemNotFoundError
+from _expiry import expired
 
 import hashlib
 import base64
+import pwd
+import grp
+import stat
+import os
+import time
 
 # Size of block we'll read from a file
 
@@ -59,13 +65,112 @@ def cas_string_to_id(s):
     return CasItemBuilder(s).cid
     
 
-def cas_path_to_id(p):
+OTYPE_FILE = 'F'
+OTYPE_DIR = 'D'
+OTYPE_LINK = 'L'
+OTYPE_FIFO = 'P'
+OTYPE_SOCK = 'S'
+OTYPE_CHR = 'C'
+OTYPE_BLK = 'B'
+
+stat_to_otype = {
+    stat.S_IFSOCK: OTYPE_SOCK,
+    stat.S_IFLNK: OTYPE_LINK,
+    stat.S_IFREG: OTYPE_FILE,
+    stat.S_IFBLK: OTYPE_BLK,
+    stat.S_IFDIR: OTYPE_DIR,
+    stat.S_IFCHR: OTYPE_CHR,
+    stat.S_IFIFO: OTYPE_FIFO,
+}
+
+# http://code.activestate.com/recipes/578231-probably-the-fastest-memoization-decorator-in-the-/
+
+def memodict(f):
+    """ Memoization decorator for a function taking a single argument """
+    class memodict(dict):
+        def __missing__(self, key):
+            ret = self[key] = f(key)
+            return ret 
+    return memodict().__getitem__
+
+@memodict
+def getuserbyid(uid):
+    try:
+        return pwd.getpwuid(uid).pw_name
+    except:
+        return None
+
+@memodict        
+def getgroupbyid(gid):
+    try:
+        return grp.getgrgid(gid).gr_name
+    except:
+        return None
+
+
+
+class CasStat(object):
+    """
+    Similar to the os.stat call, except it returns
+    the content id too.
+    """
+    
+    def __init__(self,path=None):
+        
+        if path is not None:
+            self.stat(path)
+        
+    def stat(self,path):
+        self.path = path
+        self.mode = None
+        self.uid = None
+        self.gid = None
+        self.size = None
+        self.atime = None
+        self.mtime = None
+        self.ctime = None
+        
+        self.otype = None
+        
+        # Cas-specifics
+        self.cid = None
+        self.uname = None
+        self.gname = None
+        
+        s = os.lstat(path)
+        self.mode = stat.S_IMODE(s.st_mode)
+        self.uid = s.st_uid
+        self.gid = s.st_gid
+        self.size = s.st_size
+        self.atime = s.st_atime
+        self.mtime = s.st_mtime
+        self.ctime = s.st_ctime
+        
+        self.otype = stat_to_otype.get(stat.S_IFMT(s.st_mode),None)
+
+        self.uname = getuserbyid(self.uid)
+        self.gname = getgroupbyid(self.gid)
+
+        # Try to compute the cid
+        
+        if self.otype == OTYPE_FILE:
+            self.cid = cas_file_to_id(path,self.size)
+        elif self.otype == OTYPE_LINK:
+            self.cid = cas_link_to_id(path,self.size)
+        else:
+            self.cid = None
+
+def cas_link_to_id(p,bc=None):
+    
+    d = os.readlink(p)
+    if bc is not None and len(d) != bc:
+        return None
+    
+    return cas_string_to_id(d)
+    
+def cas_file_to_id(p,bc=None):
 
     bsize = BLOCKSIZE
-
-    assert(bsize > bc)
-
-    if bc: bsize = bc
 
     h = CasItemBuilder()
 
@@ -76,7 +181,7 @@ def cas_path_to_id(p):
 
     while True:
         try:
-            buffer = os.read(f,bsize)
+            buff = os.read(f,bsize)
         except Exception,e:
             try:
                 os.close(f)
@@ -84,16 +189,16 @@ def cas_path_to_id(p):
                 pass
             return None
 
-        if not buffer:
+        if not buff:
             break
-        h.add(buffer)
-
-        if bc:
-            break
+        h.add(buff)
 
     os.close(f)
 
-    return h.size,h.cid
+    if bc is not None and bc != h.size:
+        return None
+
+    return h.cid
 
 
 class CasItemId(object):
@@ -174,7 +279,8 @@ class CasStoreBase(object):
     def __contains__(self,cid):
         return False
 
-def CasStoreVolatile(CasStoreBase):
+
+class CasStoreVolatile(CasStoreBase):
     """
     A very trivial implementation, mostly for testing,
     that stores content in-memory (just a dict).
@@ -195,22 +301,28 @@ def CasStoreVolatile(CasStoreBase):
         if size is None:
             size = len(content)
             
-        if size > len(content):
+        if size != len(content):
             raise ItemCorruptError()
             
-        trueid = cas_string_to_id(content[:size])
+        trueid = cas_string_to_id(content)
         
-        if cid is not None and cid != trueid:
+        if ci is not None and CasId(ci) != trueid:
             raise ItemCorruptError()
             
         self.items[trueid] = (expiry,size,content[:size])
+        return trueid
 
+    def __contains__(self,ci):
+        ci = CasId(ci)
+        
+        return ci in self.items
+        
     def fetch(self,ci):
         
-        ci = cas_cid(ci)
+        ci = CasId(ci)
         (exp,size,content) = self.items[ci]
         
-        if exp < time.time():
+        if expired(exp):
             del self.items[ci]
             raise ItemNotFoundError()
             
@@ -222,12 +334,12 @@ def CasStoreVolatile(CasStoreBase):
         Could be a no-op in some cases.
         """
         
-        ci = cas_cid(ci)
-        
-        
+        ci = CasId(ci)
+        return ci
+
     def get_expiry(self,ci):
         
-        ci = cas_cid(ci)
+        ci = CasId(ci)
         
         (exp,size,content) = self.items[ci]
         
@@ -235,12 +347,12 @@ def CasStoreVolatile(CasStoreBase):
         
     def get_size(self,ci):
         
-        ci = cas_cid(ci)
+        ci = CasId(ci)
         
         (exp,size,content) = self.items[ci]
         
         return size
-        
+
 
 def CasStore(x):
     print "CasStore",x

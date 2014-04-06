@@ -2,7 +2,7 @@
 # Tests for the id generators
 #
 
-from cas._base import cas_string_to_id, CasItemBuilder, CasId
+from cas._base import cas_string_to_id, CasItemBuilder, CasId, CasStat, LITERALSIZE
 import base64
 
 import pytest
@@ -11,10 +11,6 @@ import pytest
 
 def literal_id(s):
     return 'L'+base64.b64encode(s,'._')
-
-
-# This is the point at which we expect ids to change format    
-LITERALSIZE=66
 
 def cas_string_to_id_slow(s):
     b = CasItemBuilder()
@@ -49,3 +45,70 @@ def test_bad_coercion():
     for v in (0,'Not Valid',{'a':23}):
         with pytest.raises(TypeError):
             x = CasId(v)
+
+#
+# Now test files that contain the above simple content
+#
+
+import os
+import subprocess
+from contextlib import contextmanager
+
+@contextmanager
+def tempdir():
+    n = os.tmpnam()
+    assert not os.path.exists(n)
+    os.makedirs(n)
+    assert os.path.isdir(n)
+    print "created temp dir %s" % (n)
+    yield n
+    s = subprocess.call(('/bin/rm','-rf', n))
+    print "removed temp dir %s" % (n)
+    assert s == 0
+    assert not os.path.exists(n)
+
+def create_file(d,s):
+    p = os.path.join(d,s)
+    
+    f = open(p,'w')
+    f.write(s)
+    f.close()
+    return p
+
+def create_link(d,s):
+    p = os.path.join(d,'link'+s)
+    
+    os.symlink(s,p)
+    
+    return p
+    
+def test_stat_file():
+    
+    with tempdir() as d:
+        print d
+        for c in ('one','two','three','four'):
+            p = create_file(d,c)
+            
+            cid = literal_id(c)
+            
+            s = CasStat(p)
+            
+            assert s.cid == cid
+            assert s.size == len(c)
+            assert s.path == p
+            
+    
+def test_stat_link():
+    
+    with tempdir() as d:
+        print d
+        for c in ('one','two','three','four'):
+            p = create_link(d,c)
+            
+            cid = literal_id(c)
+            
+            s = CasStat(p)
+            
+            assert s.cid == cid
+            assert s.size == len(c)
+            assert s.path == p
