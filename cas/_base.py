@@ -63,7 +63,6 @@ class CasItemBuilder(object):
 def cas_string_to_id(s):
 
     return CasItemBuilder(s).cid
-    
 
 OTYPE_FILE = 'F'
 OTYPE_DIR = 'D'
@@ -117,11 +116,75 @@ class CasStat(object):
     
     def __init__(self,path=None):
         
-        if path is not None:
-            self.stat(path)
-        
-    def stat(self,path):
+        self.expiry = None
         self.path = path
+        self.clear()
+        self.refresh()
+
+    def refresh(self,path=None):
+        """
+        Update the info held here if necessary and
+        return True if anything was changed
+        """
+
+        if path is not None:
+            self.clear()
+            self.path = path
+
+        if self.path is None:
+            return False
+        
+        try:
+            s = os.lstat(self.path)
+        except:
+            self.clear()
+            return True
+
+        # mtime look ok?
+        
+        if self.mtime is not None and self.mtime == s.st_mtime:
+            return False
+
+        while True:
+            # update everything
+            
+            self.stime = time.time()
+            
+            self.mode = stat.S_IMODE(s.st_mode)
+            self.uid = s.st_uid
+            self.gid = s.st_gid
+            self.size = s.st_size
+            self.atime = s.st_atime
+            self.mtime = s.st_mtime
+            self.ctime = s.st_ctime
+            
+            self.otype = stat_to_otype.get(stat.S_IFMT(s.st_mode),None)
+    
+            self.uname = getuserbyid(self.uid)
+            self.gname = getgroupbyid(self.gid)
+    
+            # Try to compute the cid
+            
+            if self.otype == OTYPE_FILE:
+                self.cid = cas_file_to_id(self.path,self.size)
+            elif self.otype == OTYPE_LINK:
+                self.cid = cas_link_to_id(self.path,self.size)
+            else:
+                self.cid = None
+    
+            # verify the mtime following collection of the content
+    
+            s1 = os.lstat(self.path)
+    
+            if (s1.st_mode == s.st_mode) and (s1.st_mtime == s.st_mtime):
+                # we are still current
+                break
+        
+            s = s1  # prepare to go around again
+
+        return True
+        
+    def clear(self):
         self.mode = None
         self.uid = None
         self.gid = None
@@ -129,37 +192,12 @@ class CasStat(object):
         self.atime = None
         self.mtime = None
         self.ctime = None
-        
         self.otype = None
-        
         # Cas-specifics
         self.cid = None
         self.uname = None
         self.gname = None
         
-        s = os.lstat(path)
-        self.mode = stat.S_IMODE(s.st_mode)
-        self.uid = s.st_uid
-        self.gid = s.st_gid
-        self.size = s.st_size
-        self.atime = s.st_atime
-        self.mtime = s.st_mtime
-        self.ctime = s.st_ctime
-        
-        self.otype = stat_to_otype.get(stat.S_IFMT(s.st_mode),None)
-
-        self.uname = getuserbyid(self.uid)
-        self.gname = getgroupbyid(self.gid)
-
-        # Try to compute the cid
-        
-        if self.otype == OTYPE_FILE:
-            self.cid = cas_file_to_id(path,self.size)
-        elif self.otype == OTYPE_LINK:
-            self.cid = cas_link_to_id(path,self.size)
-        else:
-            self.cid = None
-
 def cas_link_to_id(p,bc=None):
     
     d = os.readlink(p)
@@ -287,7 +325,7 @@ class CasStoreVolatile(CasStoreBase):
     """
     
     def __init__(self):
-        self.items = {}
+        self.item = {}
         
     def store(self,content,expiry=None,size=None,ci=None):
         """
@@ -309,21 +347,21 @@ class CasStoreVolatile(CasStoreBase):
         if ci is not None and CasId(ci) != trueid:
             raise ItemCorruptError()
             
-        self.items[trueid] = (expiry,size,content[:size])
+        self.item[trueid] = (expiry,size,content[:size])
         return trueid
 
     def __contains__(self,ci):
         ci = CasId(ci)
         
-        return ci in self.items
+        return ci in self.item
         
     def fetch(self,ci):
         
         ci = CasId(ci)
-        (exp,size,content) = self.items[ci]
+        (exp,size,content) = self.item[ci]
         
         if expired(exp):
-            del self.items[ci]
+            del self.item[ci]
             raise ItemNotFoundError()
             
         return content
@@ -341,7 +379,7 @@ class CasStoreVolatile(CasStoreBase):
         
         ci = CasId(ci)
         
-        (exp,size,content) = self.items[ci]
+        (exp,size,content) = self.item[ci]
         
         return exp
         
@@ -349,7 +387,7 @@ class CasStoreVolatile(CasStoreBase):
         
         ci = CasId(ci)
         
-        (exp,size,content) = self.items[ci]
+        (exp,size,content) = self.item[ci]
         
         return size
 

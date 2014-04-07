@@ -25,12 +25,12 @@ class FileTreeStore(Store):
         self.content = content
         self.metadata = metadata
         
-        self.idmap = {}
-        
-    def get(self,ci):
-        pass
+        self.item = {}
 
-    def put(self,s,expiry=None,size=None,cid=None):
+        self.refresh()
+
+
+    def store(self,s,expiry=None,size=None,cid=None):
         """
         Store the stream s with expiry specified
         
@@ -42,48 +42,58 @@ class FileTreeStore(Store):
         matches, and if not fail with ItemCorruptError
         """
         
-        pass
+        raise CasReadOnlyError()
+        
+    def fetch(self,ci):
+        
+        ci = CasId(ci)
+        item = self.item[ci]
+        
+        if expired(item.expiry):
+            del self.item[ci]
+            raise ItemNotFoundError()
 
-    def verify(self):
-        
-        expectids = set(self.idmap.keys())
-        actual = self._rescan()
-        
-        actualids = set(actual.keys())
-        
-        deleted = expectids - actualids
-        
-        added = actualids - expectids
-        
-        self.idmap = actual
-        return (deleted,added)
+        return self._fetch(item)
 
+    def refresh(self):
+        
+        expectids = set(self.item.keys())
+        expectpaths = set(i.path for i in self.item.values())
 
-    def scan(self):
-        self.idmap = self._rescan()
+        allpaths = set(self._paths())
         
-    def _rescan(self):
+        newpaths = allpaths - expectpaths
+    
+        for cid,i in self.item.iteritems():
+            try:
+                i.refresh()
+            except:
+                del self.item[cid]
         
-        result = {}
+        for p in newpaths:
+            try:
+                i = CasStat(p)
+                self.item[i.cid] = i
+            except:
+                pass
+        
+    def _paths(self):
+
         for (d,k,fs) in os.walk(self.content):
             print "dir %s" % (d)
 
             for f in fs:
                 p = os.path.join(d,f)
-                if not os.path.isfile(p): continue
-                print "  %s" % (f)
-                s = os.stat(p)
-                fmt = int(s[stat.ST_MTIME])
-                size = s[stat.ST_SIZE]
 
-                cid = getcid(p)
-
-                print cid,size,p
-
-                result[cid] = FileTreeItem(cid,size,None,f)
-
-        return result
-
+                yield p
+                
+    def _fetch(self,item):
+        """ Fetch content of an item and ensure that it
+        matches the id we expect.  If not, update for the
+        new id, but return nothing from this fetch """
+        
+        pass
+        
 if __name__ == "__main__":
     
     for r in sys.argv[1:]:
