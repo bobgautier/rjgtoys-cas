@@ -7,11 +7,10 @@ from _expiry import expired
 
 import hashlib
 import base64
-import pwd
-import grp
-import stat
 import os
 import time
+import mmap
+import json
 
 # Size of block we'll read from a file
 
@@ -30,6 +29,12 @@ BLOCKSIZE=1024*1024*128
 
 LITERALSIZE=66
 
+# Id types
+
+CAS_ID_LITERAL='L'  # Prefix for literal ids
+CAS_ID_SHA512='I'   # Prefix for sha512 ids
+CAS_ID_EMPTY='Z'    # (Prefix for) the id for theempty string
+
 class CasItemBuilder(object):
     
     def __init__(self,content=None):
@@ -46,7 +51,7 @@ class CasItemBuilder(object):
         self.h.update(content)
         self.bc += len(content)
         if self.bc < LITERALSIZE:
-            self.content += content
+            self.content += str(content[:LITERALSIZE])
             
     @property
     def size(self):
@@ -54,152 +59,23 @@ class CasItemBuilder(object):
         
     @property
     def cid(self):
+        if self.bc == 0:
+            return CAS_ID_EMPTY
         if self.bc < LITERALSIZE:
-            return 'L'+base64.b64encode(self.content,'._')
+            return CAS_ID_LITERAL+base64.b64encode(self.content,'._')
 
-        return 'I'+base64.b64encode(self.h.digest(),'._')
+        return CAS_ID_SHA512+base64.b64encode(self.h.digest(),'._')
 
 
 def cas_string_to_id(s):
 
     return CasItemBuilder(s).cid
 
-OTYPE_FILE = 'F'
-OTYPE_DIR = 'D'
-OTYPE_LINK = 'L'
-OTYPE_FIFO = 'P'
-OTYPE_SOCK = 'S'
-OTYPE_CHR = 'C'
-OTYPE_BLK = 'B'
-
-stat_to_otype = {
-    stat.S_IFSOCK: OTYPE_SOCK,
-    stat.S_IFLNK: OTYPE_LINK,
-    stat.S_IFREG: OTYPE_FILE,
-    stat.S_IFBLK: OTYPE_BLK,
-    stat.S_IFDIR: OTYPE_DIR,
-    stat.S_IFCHR: OTYPE_CHR,
-    stat.S_IFIFO: OTYPE_FIFO,
-}
-
-# http://code.activestate.com/recipes/578231-probably-the-fastest-memoization-decorator-in-the-/
-
-def memodict(f):
-    """ Memoization decorator for a function taking a single argument """
-    class memodict(dict):
-        def __missing__(self, key):
-            ret = self[key] = f(key)
-            return ret 
-    return memodict().__getitem__
-
-@memodict
-def getuserbyid(uid):
-    try:
-        return pwd.getpwuid(uid).pw_name
-    except:
-        return None
-
-@memodict        
-def getgroupbyid(gid):
-    try:
-        return grp.getgrgid(gid).gr_name
-    except:
-        return None
-
-
-
-class CasStat(object):
-    """
-    Similar to the os.stat call, except it returns
-    the content id too.
-    """
-    
-    def __init__(self,path=None):
-        
-        self.expiry = None
-        self.path = path
-        self.clear()
-        self.refresh()
-
-    def refresh(self,path=None):
-        """
-        Update the info held here if necessary and
-        return True if anything was changed
-        """
-
-        if path is not None:
-            self.clear()
-            self.path = path
-
-        if self.path is None:
-            return False
-        
-        try:
-            s = os.lstat(self.path)
-        except:
-            self.clear()
-            return True
-
-        # mtime look ok?
-        
-        if self.mtime is not None and self.mtime == s.st_mtime:
-            return False
-
-        while True:
-            # update everything
-            
-            self.stime = time.time()
-            
-            self.mode = stat.S_IMODE(s.st_mode)
-            self.uid = s.st_uid
-            self.gid = s.st_gid
-            self.size = s.st_size
-            self.atime = s.st_atime
-            self.mtime = s.st_mtime
-            self.ctime = s.st_ctime
-            
-            self.otype = stat_to_otype.get(stat.S_IFMT(s.st_mode),None)
-    
-            self.uname = getuserbyid(self.uid)
-            self.gname = getgroupbyid(self.gid)
-    
-            # Try to compute the cid
-            
-            if self.otype == OTYPE_FILE:
-                self.cid = cas_file_to_id(self.path,self.size)
-            elif self.otype == OTYPE_LINK:
-                self.cid = cas_link_to_id(self.path,self.size)
-            else:
-                self.cid = None
-    
-            # verify the mtime following collection of the content
-    
-            s1 = os.lstat(self.path)
-    
-            if (s1.st_mode == s.st_mode) and (s1.st_mtime == s.st_mtime):
-                # we are still current
-                break
-        
-            s = s1  # prepare to go around again
-
-        return True
-        
-    def clear(self):
-        self.mode = None
-        self.uid = None
-        self.gid = None
-        self.size = None
-        self.atime = None
-        self.mtime = None
-        self.ctime = None
-        self.otype = None
-        # Cas-specifics
-        self.cid = None
-        self.uname = None
-        self.gname = None
-        
 def cas_link_to_id(p,bc=None):
     
+    if bc == 0:
+        return CAS_ID_EMPTY
+        
     d = os.readlink(p)
     if bc is not None and len(d) != bc:
         return None
@@ -208,36 +84,41 @@ def cas_link_to_id(p,bc=None):
     
 def cas_file_to_id(p,bc=None):
 
-    bsize = BLOCKSIZE
-
-    h = CasItemBuilder()
-
+    if bc == 0:
+        return CAS_ID_EMPTY
+        
     try:
         f = os.open(p,os.O_RDONLY)
+    except:
+        return None
+    
+    try:
+        return cas_fileno_to_id(f,bc)
+    finally:
+        os.close(f)
+
+def cas_fileno_to_id(f,bc=None):
+
+    if bc == 0:
+        return CAS_ID_EMPTY
+        
+    try:
+        d = mmap.mmap(f,0,mmap.MAP_SHARED,mmap.PROT_READ)
     except Exception,e:
+        print "Failed to map: %s" % (e)
+        return None
+    
+    try:
+        return cas_bytes_to_id(d,bc=None)
+    finally:
+        d.close()
+
+def cas_bytes_to_id(b,bc=None):
+
+    if bc is not None and bc != len(b):
         return None
 
-    while True:
-        try:
-            buff = os.read(f,bsize)
-        except Exception,e:
-            try:
-                os.close(f)
-            except:
-                pass
-            return None
-
-        if not buff:
-            break
-        h.add(buff)
-
-    os.close(f)
-
-    if bc is not None and bc != h.size:
-        return None
-
-    return h.cid
-
+    return CasItemBuilder(b).cid
 
 class CasItemId(object):
     """
@@ -403,4 +284,13 @@ if __name__ == "__main__":
     for x in sys.argv[1:]:
         print x,cas_string_to_id(x)
         
-        
+    
+def cas_encode_json(c):
+    if hasattr(c,'get_json'):
+        return c.get_json()
+
+    return c
+
+def cas_to_json(c):
+    return json.JSONEncoder(default=cas_encode_json).encode(c)
+    

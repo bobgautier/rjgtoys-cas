@@ -2,7 +2,9 @@
 # Tests for the id generators
 #
 
-from cas._base import cas_string_to_id, CasItemBuilder, CasId, CasStat, LITERALSIZE
+from cas._base import cas_string_to_id, CasItemBuilder, CasId, LITERALSIZE
+from cas._files import CasFSItem, OTYPE_FILE, OTYPE_LINK, OTYPE_DIR
+
 import base64
 
 import pytest
@@ -82,7 +84,7 @@ def create_link(d,s):
     
     return p
     
-def test_stat_file():
+def test_file_item():
     
     with tempdir() as d:
         print d
@@ -91,14 +93,14 @@ def test_stat_file():
             
             cid = literal_id(c)
             
-            s = CasStat(p)
+            s = CasFSItem(p)
             
             assert s.cid == cid
             assert s.size == len(c)
             assert s.path == p
-            
+            assert s.otype == OTYPE_FILE
     
-def test_stat_link():
+def test_link_item():
     
     with tempdir() as d:
         print d
@@ -107,8 +109,19 @@ def test_stat_link():
             
             cid = literal_id(c)
             
-            s = CasStat(p)
+            s = CasFSItem(p)
             
             assert s.cid == cid
             assert s.size == len(c)
             assert s.path == p
+            assert s.otype == OTYPE_LINK
+            
+def test_dir_item():
+    with tempdir() as d:
+        print d
+        for c in ('a','b','c'):
+            p = os.path.join(d,c)
+            os.makedirs(p)
+            s = CasFSItem(p)
+            assert s.path == p
+            assert s.otype == OTYPE_DIR
