@@ -283,14 +283,15 @@ if __name__ == "__main__":
     
     for x in sys.argv[1:]:
         print x,cas_string_to_id(x)
-        
+
+class CasJSONEncoder(json.JSONEncoder):
     
-def cas_encode_json(c):
-    if hasattr(c,'get_json'):
-        return c.get_json()
+    def default(self,c):
+        if hasattr(c,'get_json'):
+            return c.get_json()
 
-    return c
-
+        return json.JSONEncoder(self,c)
+        
 def cas_to_json(c):
-    return json.JSONEncoder(default=cas_encode_json).encode(c)
+    return CasJSONEncoder().encode(c)
     
