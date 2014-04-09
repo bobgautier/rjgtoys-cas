@@ -10,6 +10,9 @@ from contextlib import contextmanager
 from cas._base import cas_to_json
 from cas._files import CasFileTreeStore, OTYPE_FILE, OTYPE_LINK, OTYPE_DIR, DEFAULT_METADATA
 
+import cas
+
+
 @contextmanager
 def tempdir():
     n = os.tmpnam()
@@ -50,6 +53,8 @@ def assert_item_by_path(s,p,otype):
     assert i.otype == otype
 
 def test_cas_filetree():
+    cas.log.set_debug(True)
+    cas.log.set_verbose(True)
     with tempdir() as d:
         
         create_file(d,'one','content for one')

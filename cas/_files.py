@@ -14,6 +14,10 @@ from gzip import GzipFile
 
 from _base import CasStoreBase, cas_link_to_id, cas_file_to_id, cas_to_json, cas_from_json
 
+import cas
+
+log = cas.log.getLogger(__name__)
+
 # Default relative path to metadata file
 
 DEFAULT_METADATA='.cas'
@@ -205,7 +209,7 @@ class CasFileTreeStore(CasStoreBase):
             self.metadata = DEFAULT_METADATA
             
         path = os.path.join(self.content,self.metadata)
-        print "Loading from %s" % (path)
+        log.debug("Loading from %s" % (path))
         
         try:
             with GzipFile(path) as f:
@@ -213,9 +217,9 @@ class CasFileTreeStore(CasStoreBase):
             return True
         except Exception,e:
             if isinstance(e,IOError) and e.errno == 2:  # Not found
-                print "(No metadata found at %s)" % (path)
+                log.debug("(No metadata found at %s)" % (path))
                 return False
-            print "Failed to load metadata %s:%s" % (path,e)
+            log.debug("Failed to load metadata %s:%s" % (path,e))
 
         return False
         
@@ -234,10 +238,10 @@ class CasFileTreeStore(CasStoreBase):
         try:
             with GzipFile(path,'wb') as f:
                 f.write(cas_to_json(self))
-            print "Saved state to %s" % (path)
+            log.debug("Saved state to %s" % (path))
             return True
         except Exception,e:
-            print "Failed to save metadata %s: %s" % (path,e)
+            log.warning("Failed to save metadata %s: %s" % (path,e))
         
         return False
         
@@ -282,11 +286,11 @@ class CasFileTreeStore(CasStoreBase):
             path = i.path
             try:
                 if i.refresh():
-                    print "Metadata for %s was out of date" % (path)
+                    log.debug("Metadata for %s was out of date" % (path))
                 else:
-                    print "Assuming metadata current for %s" % (path)
+                    log.debug("Assuming metadata current for %s" % (path))
             except Exception,e:
-                print "refresh: for path '%s': %s" % (path,e)
+                log.debug("refresh: for path '%s': %s" % (path,e))
                 try:
                     del self.byid[cid]
                 except:
@@ -298,12 +302,12 @@ class CasFileTreeStore(CasStoreBase):
 
         for p in newpaths:
             try:
-                print "Found new item at %s" % (p)
+                log.debug("Found new item at %s" % (p))
                 i = CasFSItem(path=p,dir=self.content)
                 self.byid[i.cid] = i
                 self.bypath[i.path] = i
             except Exception,e:
-                print "Create Item failed for '%s': %s" % (p,e)
+                log.error("Create Item failed for '%s': %s" % (p,e))
                 pass
         
     def _paths(self):
