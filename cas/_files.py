@@ -10,9 +10,13 @@ import pwd
 import grp
 import stat
 import time
+from gzip import GzipFile
 
-from _base import CasStoreBase, cas_link_to_id, cas_file_to_id
+from _base import CasStoreBase, cas_link_to_id, cas_file_to_id, cas_to_json, cas_from_json
 
+# Default relative path to metadata file
+
+DEFAULT_METADATA='.cas'
 
 OTYPE_FILE = 'F'
 OTYPE_DIR = 'D'
@@ -65,17 +69,20 @@ class CasFSItem(object):
     content.
     """
     
-    json_version="1.0"
+    version="1"
     
-    def __init__(self,path=None,dir=''):
+    def __init__(self,path=None,dir='',state=None):
         
+        if state is not None:
+            return self.__setstate__(state)
+
         self.expiry = None
         self.path = path
         self.dir = dir
         self.clear()
         self.refresh()
 
-        self.__dict__['json_version'] = self.json_version
+        self.__dict__['version'] = self.version
         
     def refresh(self,path=None,dir=''):
         """
@@ -160,23 +167,79 @@ class CasFSItem(object):
     def expired(self):
         return expired(self.expiry)
 
-    def get_json(self):
+    def __getstate__(self):
         return self.__dict__
+        
+    def __setstate__(self,state):
+        assert state.version == self.version
+        self.__dict__.update(state)
         
 class CasFileTreeStore(CasStoreBase):
 
-    json_version="1.0"
+    version="1"
     
-    def __init__(self,content=None,metadata=None,scan=False):
+    def __init__(self,content=None,metadata=None,refresh=None):
         self.content = os.path.normpath(content)+'/'
         self.metadata = metadata
         
         self.byid = {}
         self.bypath = {}
-        
-        self.refresh()
 
-        self.__dict__['json_version'] = self.json_version
+        # If we got content but no metadata,
+        # force a refresh by default
+        
+        if not self.load() and refresh is None:
+            refresh = True
+            
+        if refresh:
+            self.refresh()
+    
+    def load(self,metadata=None):
+        if self.content is None:
+            return True
+
+        if metadata is not None:
+            self.metadata = metadata
+        
+        if self.metadata is None:
+            self.metadata = DEFAULT_METADATA
+            
+        path = os.path.join(self.content,self.metadata)
+        print "Loading from %s" % (path)
+        
+        try:
+            with GzipFile(path) as f:
+                self.__setstate__(cas_from_json(f.read()))
+            return True
+        except Exception,e:
+            if isinstance(e,IOError) and e.errno == 2:  # Not found
+                print "(No metadata found at %s)" % (path)
+                return False
+            print "Failed to load metadata %s:%s" % (path,e)
+
+        return False
+        
+    def save(self,metadata=None):
+        if self.content is None:
+            return False
+
+        if metadata is not None:
+            self.metadata = metadata
+            
+        if self.metadata is None:
+            self.metadata = DEFAULT_METADATA
+        
+        path = os.path.join(self.content,self.metadata)
+        
+        try:
+            with GzipFile(path,'wb') as f:
+                f.write(cas_to_json(self))
+            print "Saved state to %s" % (path)
+            return True
+        except Exception,e:
+            print "Failed to save metadata %s: %s" % (path,e)
+        
+        return False
         
     def __iter__(self):
         return self.bypath.itervalues()
@@ -218,8 +281,12 @@ class CasFileTreeStore(CasStoreBase):
             cid = i.cid
             path = i.path
             try:
-                i.refresh()
-            except:
+                if i.refresh():
+                    print "Metadata for %s was out of date" % (path)
+                else:
+                    print "Assuming metadata current for %s" % (path)
+            except Exception,e:
+                print "refresh: for path '%s': %s" % (path,e)
                 try:
                     del self.byid[cid]
                 except:
@@ -231,10 +298,12 @@ class CasFileTreeStore(CasStoreBase):
 
         for p in newpaths:
             try:
+                print "Found new item at %s" % (p)
                 i = CasFSItem(path=p,dir=self.content)
                 self.byid[i.cid] = i
                 self.bypath[i.path] = i
-            except:
+            except Exception,e:
+                print "Create Item failed for '%s': %s" % (p,e)
                 pass
         
     def _paths(self):
@@ -245,12 +314,12 @@ class CasFileTreeStore(CasStoreBase):
 
         suffix=len(self.content)
         for (d,k,fs) in os.walk(self.content):
-            print "dir %s" % (d)
+#            print "dir %s" % (d)
 
             yield d[suffix:]
             for f in fs:
                 p = os.path.join(d,f)[suffix:]
-                print " file %s" % (p)
+#                print " file %s" % (p)
                 yield p
                 
     def _fetch(self,item):
@@ -260,6 +329,18 @@ class CasFileTreeStore(CasStoreBase):
         
         pass
 
-    def get_json(self):
-        return dict(json_version=self.json_version,items=self.bypath.values())
+    def __getstate__(self):
+        return dict(version=self.version,item=self.bypath.values())
+    
+    def __setstate__(self,state):
+        assert state.version == self.version
+
+        self.byid = {}
+        self.bypath = {}
+        self.content = None
+        self.metadata = None
         
+        for i in state.item:
+            ci = CasFSItem(state=i)
+            self.byid[ci.cid] = ci
+            self.bypath[ci.path] = ci

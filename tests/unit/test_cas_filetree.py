@@ -8,7 +8,7 @@ import subprocess
 from contextlib import contextmanager
 
 from cas._base import cas_to_json
-from cas._files import CasFileTreeStore, OTYPE_FILE, OTYPE_LINK, OTYPE_DIR
+from cas._files import CasFileTreeStore, OTYPE_FILE, OTYPE_LINK, OTYPE_DIR, DEFAULT_METADATA
 
 @contextmanager
 def tempdir():
@@ -18,6 +18,7 @@ def tempdir():
     assert os.path.isdir(n)
     print "created temp dir %s" % (n)
     yield n
+    #return
     s = subprocess.call(('/bin/rm','-rf', n))
     print "removed temp dir %s" % (n)
     assert s == 0
@@ -68,6 +69,20 @@ def test_cas_filetree():
         assert_item_by_path(s,'sub/three',OTYPE_FILE)
         assert_item_by_path(s,'sub/link',OTYPE_LINK)
 
-        js = cas_to_json(s)
-        print js
+        assert s.save()
+        
+        assert os.path.isfile(os.path.join(d,DEFAULT_METADATA))
+
+        print "Creating second filetree object"
+        
+        t = CasFileTreeStore(content=d)
+        
+        assert t.load()
+        
+        tpaths = [i.path for i in t]
+
+        print "tpaths",tpaths
+        print " paths",paths
+        
+        assert set(tpaths) == set(paths)
         assert False

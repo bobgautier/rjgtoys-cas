@@ -278,20 +278,28 @@ def CasStore(x):
 
     return ['%s%d' % (x,n) for n in range(0,10)]
 
-if __name__ == "__main__":
-    import sys
-    
-    for x in sys.argv[1:]:
-        print x,cas_string_to_id(x)
 
 class CasJSONEncoder(json.JSONEncoder):
     
     def default(self,c):
-        if hasattr(c,'get_json'):
-            return c.get_json()
+        if hasattr(c,'__getstate__'):
+            return c.__getstate__()
 
-        return json.JSONEncoder(self,c)
+        return json.JSONEncoder.default(self,c)
+
         
 def cas_to_json(c):
     return CasJSONEncoder().encode(c)
-    
+
+
+class CasJson(dict):
+    """ A simple class that provides for JS-style
+    attribute access: d.x and d['x'] work for any x
+    """
+    def __getattr__(self, attr):
+        return self.get(attr, None)
+    __setattr__= dict.__setitem__
+    __delattr__= dict.__delitem__
+
+def cas_from_json(j):
+    return json.loads(j,object_hook=CasJson)
