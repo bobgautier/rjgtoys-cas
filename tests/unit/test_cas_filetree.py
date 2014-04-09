@@ -53,8 +53,11 @@ def assert_item_by_path(s,p,otype):
     assert i.otype == otype
 
 def test_cas_filetree():
-    cas.log.set_debug(True)
-    cas.log.set_verbose(True)
+    log = cas.log.getLogger("__main__")
+    cas.log.configure()
+    log.set_debug(True)
+    log.set_verbose(True)
+    log.verbose("Starting file tree test")
     with tempdir() as d:
         
         create_file(d,'one','content for one')
@@ -78,7 +81,7 @@ def test_cas_filetree():
         
         assert os.path.isfile(os.path.join(d,DEFAULT_METADATA))
 
-        print "Creating second filetree object"
+        log.verbose("Creating second filetree object")
         
         t = CasFileTreeStore(content=d)
         
@@ -86,8 +89,8 @@ def test_cas_filetree():
         
         tpaths = [i.path for i in t]
 
-        print "tpaths",tpaths
-        print " paths",paths
+        log.debug("tpaths %s" % (tpaths))
+        log.debug(" paths %s" % (paths))
         
         assert set(tpaths) == set(paths)
         assert False
