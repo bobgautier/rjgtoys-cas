@@ -76,6 +76,3 @@ setup(
     cmdclass = {'test':PyTest},
 
 )
-
-
-    

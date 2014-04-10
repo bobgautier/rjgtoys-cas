@@ -97,6 +97,7 @@ def statdir(d):
             if stat.S_ISDIR(s.st_mode):
                 q.append(p)
 
+
 kB=1024
 MB=kB*1024
 GB=MB*1024
@@ -109,6 +110,7 @@ def sizestr(s,unit='B'):
         if s >= threshold:
             return "%6.1f%s%s" % (s/threshold,suffix,unit)
     return "%.1f%s" % (s,unit)
+
 
 class CasFSItem(object):
     """
@@ -237,14 +239,19 @@ class CasFSItem(object):
     def __setstate__(self,state):
         assert state.version == self.version
         self.__dict__.update(state)
-        self.fileid = tuple(self.fileid) # JSON converts this to a list
-
+        self.fileid = tuple(self.fileid) # JSON will represent this as a list
+        #
+        # Paths will have started off as ordinary strings, but JSON will
+        # have made them unicode; we can safely convert back (I claim)
+        #
+        if self.path is not None:
+            self.path = str(self.path)
 class CasFileTreeStore(CasStoreBase):
 
     version="1"
     
     def __init__(self,content=None,metadata=None,refresh=None):
-        self.content = os.path.normpath(content)+'/'
+        self.content = os.path.normpath(content)
         self.metadata = metadata
         
         self.byfileid = {}  # Locate each by device and inode
@@ -357,8 +364,8 @@ class CasFileTreeStore(CasStoreBase):
                 self.bypath[item.path] = item
                 newentries += 1
                 newbytes += s.st_size
-            else:
-                item.update(p,s)
+                log.info("New item %s" % (item.path))
+            elif item.update(p,s):
                 origentries += 1
                 origbytes += s.st_size
             
@@ -369,23 +376,24 @@ class CasFileTreeStore(CasStoreBase):
         lostentries = 0
         lostbytes = 0
         
-        for item in [i for i in self.byfileid.values() if i.find_time != find_time]:
+        for item in [i for i in self.byfileid.itervalues() if i.find_time != find_time]:
             del self.byfileid[item.fileid]
             del self.bypath[item.path]
             del self.byid[item.cid]
-            
+            log.info("Vanished item %s" % (item.path))
             lostentries += 1
             lostbytes += item.size
             
             # del item
             
-        log.debug("Added  %d %s" % (newentries, sizestr(newbytes)))
+        log.debug("Add    %d %s" % (newentries, sizestr(newbytes)))
         log.debug("Remove %d %s" % (lostentries,sizestr(lostbytes)))
         log.debug("Update %d %s" % (origentries, sizestr(origbytes)))    
 
-        for item in self.byfileid.values():
+        for item in self.byfileid.itervalues():
             oldid = item.cid
             if item.stale:
+                log.info("Refresh item %s" % (item.path))
                 item.refresh(self.content)
             if oldid != item.cid:
                 try:
@@ -402,7 +410,7 @@ class CasFileTreeStore(CasStoreBase):
         pass
 
     def __getstate__(self):
-        return dict(version=self.version,item=self.bypath.values())
+        return dict(version=self.version,item=self.byfileid.values())
     
     def __setstate__(self,state):
         assert state.version == self.version
