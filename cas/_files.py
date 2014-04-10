@@ -64,7 +64,51 @@ def getgroupbyid(gid):
     except:
         return None
 
+def statdir(d):
+    """ Generate a sequence of (path,stat) pairs
+    for all entries in a directory and below
+    """
+    d = os.path.normpath(d)
+    q = [d]
+    
+    suffix = len(d)+1
+    
+    while q:
+        d = q.pop()
 
+        try:
+            e = os.listdir(d)
+        except Exception,e:
+            log.error("Failed to list directory %s: %s" % (d,e))
+            continue
+            # FIXME: stat again in case it's changed?
+        
+        for f in e:
+            p = os.path.join(d,f)
+            
+            try:
+                s = os.lstat(p)
+            except Exception,e:
+                log.error("Failed to stat %s: %s" % (p,e))
+                continue
+
+            yield (p[suffix:],s)
+            
+            if stat.S_ISDIR(s.st_mode):
+                q.append(p)
+
+kB=1024
+MB=kB*1024
+GB=MB*1024
+TB=GB*1024
+PB=TB*1024
+
+def sizestr(s,unit='B'):
+    s = float(s)
+    for (threshold,suffix) in ((PB,'P'),(TB,'T'),(GB,'G'),(MB,'M'),(kB,'k')):
+        if s >= threshold:
+            return "%6.1f%s%s" % (s/threshold,suffix,unit)
+    return "%.1f%s" % (s,unit)
 
 class CasFSItem(object):
     """
@@ -75,84 +119,97 @@ class CasFSItem(object):
     
     version="1"
     
-    def __init__(self,path=None,dir='',state=None):
-        
-        if state is not None:
-            return self.__setstate__(state)
+    def __init__(self,path=None,stat=None,saved=None):
 
-        self.expiry = None
-        self.path = path
-        self.dir = dir
-        self.clear()
-        self.refresh()
+        if saved is not None:
+            return self.__setstate__(saved)
 
         self.__dict__['version'] = self.version
         
-    def refresh(self,path=None,dir=''):
+        self.expiry = None
+        self.path = path
+        self.clear()
+        if path is not None and stat is not None:
+            self.update(path,stat)
+
+    def update(self,path,s):
         """
         Update the info held here if necessary and
-        return True if anything was changed
+        return True if the content id is likely to have changed
         """
 
-        if path is not None:
-            self.clear()
-            self.path = path
-            self.dir = dir
-            
-        if self.path is None:
-            return False
+        self.path = path
         
-        path = os.path.join(self.dir,self.path)
-        try:
-            s = os.lstat(path)
-        except:
-            self.clear()
-            return True
-
-        # mtime look ok?
-        
-        if self.mtime is not None and self.mtime == s.st_mtime:
-            return False
-
-        while True:
-            # update everything
-            
-            self.stime = time.time()
-            
-            self.mode = stat.S_IMODE(s.st_mode)
-            self.uid = s.st_uid
-            self.gid = s.st_gid
-            self.size = s.st_size
-            self.atime = s.st_atime
+        self.stale = False
+        if self.mtime is None or self.mtime != s.st_mtime:
             self.mtime = s.st_mtime
-            self.ctime = s.st_ctime
+            self.stale = True
+        
+        fileid = (s.st_dev,s.st_ino)
+        if self.fileid is None or self.fileid != fileid:
+            self.fileid = fileid
+            self.stale = True
+        
+        self.stime = time.time()
             
-            self.otype = stat_to_otype.get(stat.S_IFMT(s.st_mode),None)
-    
+        self.mode = stat.S_IMODE(s.st_mode)
+        if self.uid != s.st_uid:
+            self.uid = s.st_uid
             self.uname = getuserbyid(self.uid)
+
+        if self.gid != s.st_gid:
+            self.gid = s.st_gid
             self.gname = getgroupbyid(self.gid)
-    
-            # Try to compute the cid
+
+        self.size = s.st_size
+        self.atime = s.st_atime
+        self.mtime = s.st_mtime
+        self.ctime = s.st_ctime
             
+        self.otype = stat_to_otype.get(stat.S_IFMT(s.st_mode),None)
+
+        return self.stale
+
+    def refresh(self,d=None):
+    
+        assert self.stale
+    
+        if d is None:
+            d = ''
+
+        tries = 0
+        while self.stale:
+            tries += 1
+            
+        # Try to compute the cid
+
+            path = os.path.join(d,self.path)
+
             if self.otype == OTYPE_FILE:
                 self.cid = cas_file_to_id(path,self.size)
             elif self.otype == OTYPE_LINK:
                 self.cid = cas_link_to_id(path,self.size)
             else:
                 self.cid = None
-    
-            # verify the mtime following collection of the content
-    
-            s1 = os.lstat(path)
-    
-            if (s1.st_mode == s.st_mode) and (s1.st_mtime == s.st_mtime):
-                # we are still current
-                break
         
-            s = s1  # prepare to go around again
+            try:
+                s = os.lstat(path)
+            except Exception,e:
+                log.error("Failed to stat %s: %s" % (path,e))
+                self.clear()
+                return self
+                
+            self.update(self.path,s)
+            if self.stale:
+                if tries > 3:
+                    log.error("File %s is changing too often - giving up" % (path))
+                    self.clear()
+                    return self
+                    
+                log.warning("File %s changed during reading - retrying" % (path))
 
-        return True
-        
+        return self
+
     def clear(self):
         self.mode = None
         self.uid = None
@@ -163,9 +220,12 @@ class CasFSItem(object):
         self.ctime = None
         self.otype = None
         # Cas-specifics
+        self.fileid = None
         self.cid = None
         self.uname = None
         self.gname = None
+        self.stale = False
+        self.stime = 0
 
     @property
     def expired(self):
@@ -177,7 +237,8 @@ class CasFSItem(object):
     def __setstate__(self,state):
         assert state.version == self.version
         self.__dict__.update(state)
-        
+        self.fileid = tuple(self.fileid) # JSON converts this to a list
+
 class CasFileTreeStore(CasStoreBase):
 
     version="1"
@@ -186,8 +247,9 @@ class CasFileTreeStore(CasStoreBase):
         self.content = os.path.normpath(content)+'/'
         self.metadata = metadata
         
-        self.byid = {}
-        self.bypath = {}
+        self.byfileid = {}  # Locate each by device and inode
+        self.bypath = {}    # Locate by file path
+        self.byid = {}      # Locate by content id
 
         # If we got content but no metadata,
         # force a refresh by default
@@ -275,57 +337,63 @@ class CasFileTreeStore(CasStoreBase):
 
     def refresh(self):
         
-        expectpaths = set(i.path for i in self.bypath.values())
-
-        allpaths = set(self._paths())
+        newentries = 0
+        newbytes = 0
         
-        newpaths = allpaths - expectpaths
-    
-        for i in self.bypath.itervalues():
-            cid = i.cid
-            path = i.path
-            try:
-                if i.refresh():
-                    log.debug("Metadata for %s was out of date" % (path))
-                else:
-                    log.debug("Assuming metadata current for %s" % (path))
-            except Exception,e:
-                log.debug("refresh: for path '%s': %s" % (path,e))
-                try:
-                    del self.byid[cid]
-                except:
-                    pass
-                try:
-                    del self.bypath[path]
-                except:
-                    pass
+        origentries = 0
+        origbytes = 0
 
-        for p in newpaths:
-            try:
-                log.debug("Found new item at %s" % (p))
-                i = CasFSItem(path=p,dir=self.content)
-                self.byid[i.cid] = i
-                self.bypath[i.path] = i
-            except Exception,e:
-                log.error("Create Item failed for '%s': %s" % (p,e))
-                pass
+        find_time = time.time()
         
-    def _paths(self):
-        """
-        Return all the content-root relative paths of
-        objects in the content-root.
-        """
-
-        suffix=len(self.content)
-        for (d,k,fs) in os.walk(self.content):
-#            print "dir %s" % (d)
-
-            yield d[suffix:]
-            for f in fs:
-                p = os.path.join(d,f)[suffix:]
-#                print " file %s" % (p)
-                yield p
+        for (p,s) in statdir(self.content):
+            log.debug("refresh found %s" % (p))
+            fileid = (s.st_dev,s.st_ino)
+            
+            item = self.byfileid.get(fileid,None)
+            if item is None:
+                item = CasFSItem(p,s)
                 
+                self.byfileid[item.fileid] = item
+                self.bypath[item.path] = item
+                newentries += 1
+                newbytes += s.st_size
+            else:
+                item.update(p,s)
+                origentries += 1
+                origbytes += s.st_size
+            
+            item.find_time = find_time
+
+        # Clobber all items that have not been touched
+        
+        lostentries = 0
+        lostbytes = 0
+        
+        for item in [i for i in self.byfileid.values() if i.find_time != find_time]:
+            del self.byfileid[item.fileid]
+            del self.bypath[item.path]
+            del self.byid[item.cid]
+            
+            lostentries += 1
+            lostbytes += item.size
+            
+            # del item
+            
+        log.debug("Added  %d %s" % (newentries, sizestr(newbytes)))
+        log.debug("Remove %d %s" % (lostentries,sizestr(lostbytes)))
+        log.debug("Update %d %s" % (origentries, sizestr(origbytes)))    
+
+        for item in self.byfileid.values():
+            oldid = item.cid
+            if item.stale:
+                item.refresh(self.content)
+            if oldid != item.cid:
+                try:
+                    del self.byid[oldid]
+                except:
+                    pass
+                self.byid[item.cid] = item
+            
     def _fetch(self,item):
         """ Fetch content of an item and ensure that it
         matches the id we expect.  If not, update for the
@@ -341,10 +409,9 @@ class CasFileTreeStore(CasStoreBase):
 
         self.byid = {}
         self.bypath = {}
-        self.content = None
-        self.metadata = None
         
         for i in state.item:
-            ci = CasFSItem(state=i)
+            ci = CasFSItem(saved=i)
             self.byid[ci.cid] = ci
             self.bypath[ci.path] = ci
+            self.byfileid[ci.fileid] = ci

@@ -93,7 +93,8 @@ def test_file_item():
             
             cid = literal_id(c)
             
-            s = CasFSItem(p)
+            ps = os.lstat(p)
+            s = CasFSItem(p,ps).refresh()
             
             assert s.cid == cid
             assert s.size == len(c)
@@ -109,7 +110,8 @@ def test_link_item():
             
             cid = literal_id(c)
             
-            s = CasFSItem(p)
+            ps = os.lstat(p)
+            s = CasFSItem(p,ps).refresh()
             
             assert s.cid == cid
             assert s.size == len(c)
@@ -122,6 +124,8 @@ def test_dir_item():
         for c in ('a','b','c'):
             p = os.path.join(d,c)
             os.makedirs(p)
-            s = CasFSItem(p)
+            ps = os.lstat(p)
+            s = CasFSItem(p,ps).refresh()
+            
             assert s.path == p
             assert s.otype == OTYPE_DIR

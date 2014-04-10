@@ -35,6 +35,9 @@ def create_file(d,p,s):
     f.close()
     return p
 
+def remove_file(d,p):
+    os.unlink(os.path.join(d,p))
+    
 def create_link(d,p,s):
     p = os.path.join(d,p)
     
@@ -93,4 +96,18 @@ def test_cas_filetree():
         log.debug(" paths %s" % (paths))
         
         assert set(tpaths) == set(paths)
-        assert False
+
+        # Now remove a file and see if both notice
+        
+        remove_file(d,'one')
+        
+        s.refresh()
+        t.refresh()
+        
+        spaths = [i.path for i in s]
+        tpaths = [i.path for i in t]
+        
+        assert 'one' not in spaths
+        assert 'one' not in tpaths
+
+
