@@ -22,6 +22,8 @@ log = cas.log.getLogger(__name__)
 
 DEFAULT_METADATA='.cas'
 
+# Filesystem object types
+
 OTYPE_FILE = 'F'
 OTYPE_DIR = 'D'
 OTYPE_LINK = 'L'
@@ -98,19 +100,23 @@ def statdir(d):
                 q.append(p)
 
 
-kB=1024
-MB=kB*1024
-GB=MB*1024
-TB=GB*1024
-PB=TB*1024
+kiB=1024
+MiB=kiB*1024
+GiB=MiB*1024
+TiB=GiB*1024
+PiB=TiB*1024
 
 def sizestr(s,unit='B'):
-    s = float(s)
-    for (threshold,suffix) in ((PB,'P'),(TB,'T'),(GB,'G'),(MB,'M'),(kB,'k')):
-        if s >= threshold:
-            return "%6.1f%s%s" % (s/threshold,suffix,unit)
-    return "%.1f%s" % (s,unit)
-
+    """ Convert a number (usually a size in bytes) to a more
+    human-readable string.   Note I'm using power of 2 based
+    multipliers just to be clear.
+    """
+    
+    f = float(s)
+    for (threshold,suffix) in ((PiB,'Pi'),(TiB,'Ti'),(GiB,'Gi'),(MiB,'Mi'),(kiB,'ki')):
+        if f >= threshold:
+            return ("%6.1f%s%s" % (f/threshold,suffix,unit)).strip()
+    return "%d%s" % (s,unit)
 
 class CasFSItem(object):
     """
@@ -121,14 +127,14 @@ class CasFSItem(object):
     
     version="1"
     
-    def __init__(self,path=None,stat=None,saved=None):
+    def __init__(self,path=None,stat=None,expiry=None,saved=None):
 
         if saved is not None:
             return self.__setstate__(saved)
 
         self.__dict__['version'] = self.version
         
-        self.expiry = None
+        self.expiry = expiry
         self.path = path
         self.clear()
         if path is not None and stat is not None:
@@ -173,7 +179,10 @@ class CasFSItem(object):
         return self.stale
 
     def refresh(self,d=None):
-    
+        """
+        Update the content id
+        """
+
         assert self.stale
     
         if d is None:
@@ -246,12 +255,15 @@ class CasFSItem(object):
         #
         if self.path is not None:
             self.path = str(self.path)
+
 class CasFileTreeStore(CasStoreBase):
 
     version="1"
     
     def __init__(self,content=None,metadata=None,refresh=None):
-        self.content = os.path.normpath(content)
+        if content is not None:
+            content = os.path.normpath(content)
+        self.content = content
         self.metadata = metadata
         
         self.byfileid = {}  # Locate each by device and inode
@@ -343,7 +355,15 @@ class CasFileTreeStore(CasStoreBase):
         return self._fetch(item)
 
     def refresh(self):
+        """
+        Refresh metadata for this store.
         
+        Needs to be split up more to enable:
+        
+        1) Checkpointing
+        2) Progress reporting
+        """
+
         newentries = 0
         newbytes = 0
         
@@ -351,6 +371,8 @@ class CasFileTreeStore(CasStoreBase):
         origbytes = 0
 
         find_time = time.time()
+        
+        log_time = find_time    # crude progress reporting
         
         for (p,s) in statdir(self.content):
             log.debug("refresh found %s" % (p))
@@ -366,10 +388,16 @@ class CasFileTreeStore(CasStoreBase):
                 newbytes += s.st_size
                 log.info("New item %s" % (item.path))
             elif item.update(p,s):
+                # If the item needs a reread...
                 origentries += 1
                 origbytes += s.st_size
-            
+                log.verbose("Updated item %s" % (item.path))
+
             item.find_time = find_time
+            t = time.time()
+            if (t-log_time) > 1:
+                log.verbose("Scanning: found %d/%s new %d/%s changed" % (newentries,sizestr(newbytes),origentries,sizestr(origbytes)))
+                log_time = t
 
         # Clobber all items that have not been touched
         
@@ -384,23 +412,57 @@ class CasFileTreeStore(CasStoreBase):
             lostentries += 1
             lostbytes += item.size
             
+            t = time.time()
+            if (t-log_time) > 1:
+                log.verbose("Scanning: found %d/%s deleted" % (lostentries,sizestr(lostbytes)))
+                log_time = t
+                
             # del item
-            
-        log.debug("Add    %d %s" % (newentries, sizestr(newbytes)))
-        log.debug("Remove %d %s" % (lostentries,sizestr(lostbytes)))
-        log.debug("Update %d %s" % (origentries, sizestr(origbytes)))    
+        
+        log.verbose("Scan found %d/%s new %d/%s changed %d/%s deleted" % (
+                newentries, sizestr(newbytes),
+                lostentries,sizestr(lostbytes),
+                origentries, sizestr(origbytes)))
 
+        # refresh phase
+        
+        refentries = 0
+        refbytes = 0
+        
+        refstart = time.time()
+        
         for item in self.byfileid.itervalues():
             oldid = item.cid
             if item.stale:
                 log.info("Refresh item %s" % (item.path))
                 item.refresh(self.content)
+                refentries += 1
+                refbytes += item.size
+
             if oldid != item.cid:
                 try:
                     del self.byid[oldid]
                 except:
                     pass
                 self.byid[item.cid] = item
+            # FIXME: track path changes too?
+
+            t = time.time()
+            if (t-log_time) > 1:
+                
+                countpc = int(refentries*100./origentries)    # percent done by count
+                bytespc = int(refbytes*100./origbytes)        # percent done by bytes
+        
+                reftogo = ((t-ref_start)*(origbytes-refbytes))/refbytes  #
+                eta = t+reftogo
+                
+                eta = time.strftime("%Y-%m-%d %H:%M:%S",time.localtime(eta))
+                
+                log.verbose("Refreshing: done %d/%d=%d%% %s/%s=%d%%\n in %ds, %ds to go ETA %s",
+                            (refentries, origentries, countpc,
+                                sizestr(refbytes),sizestr(origbytes),bytespc,
+                                t-ref_start,reftogo,eta))
+        log.info("Refresh completed.")
             
     def _fetch(self,item):
         """ Fetch content of an item and ensure that it
