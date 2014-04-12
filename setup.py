@@ -35,7 +35,7 @@ class PyTest(TestCommand):
         if os.path.exists(cov_file):
             os.unlink(cov_file)
 
-        cov = coverage.coverage(include=['%s/*' % (package)])
+        cov = coverage.coverage(include=['%s/*' % (package),'tests/unit/fixture*'])
         cov.start()
         errno = pytest.main(self.test_args)
         cov.stop()

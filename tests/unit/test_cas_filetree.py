@@ -110,4 +110,4 @@ def test_cas_filetree():
         assert 'one' not in spaths
         assert 'one' not in tpaths
 
-        assert False
+        #assert False
