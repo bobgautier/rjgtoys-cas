@@ -6,9 +6,9 @@ from argparse import ArgumentParser
 
 from _base import CasStore
 
-from _log import getLogger
+import cas
 
-log = getLogger(__name__)
+log = cas.log.getLogger(__name__)
 
 class RefreshCommand(object):
     
@@ -26,7 +26,8 @@ class RefreshCommand(object):
     def add_options(self,p):
 
         p.add_argument('-n','--dryrun',dest='dryrun',help="Dry run: don't write anything back",action="store_true",default=False)
-        
+        p.add_argument('-f','--force',dest='force',help="Force a full scan",action="store_true",default=False)
+
         p.add_argument('cas',metavar='source',type=str,help="Source store")
         
     def parse_args(self,argv):
@@ -48,7 +49,7 @@ class RefreshCommand(object):
         
         cas = CasStore(opts.cas)
         
-        cas.refresh()
+        cas.refresh(force=opts.force)
         if not opts.dryrun:
             log.verbose("Saving changes")
             cas.save()

@@ -273,12 +273,12 @@ class CasStoreVolatile(CasStoreBase):
         return size
 
 
-def CasStore(x):
+def CasStore(x,**kwargs):
     print "CasStore",x
 
     if os.path.isdir(x):
         from _files import CasFileTreeStore
-        return CasFileTreeStore(content=x)
+        return CasFileTreeStore(content=x,**kwargs)
     
     raise TypeError("Can't identify a store called '%s'" % (x))
 

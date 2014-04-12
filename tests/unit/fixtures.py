@@ -5,6 +5,8 @@
 import os
 from mock import patch
 
+import time
+
 def stat_result(mode=None,ino=None,dev=None,uid=None,gid=None,
             size=None,atime=None,mtime=None,ctime=None):
     return os.stat_result((mode,ino,dev,0,uid,gid,size,atime,mtime,ctime))
@@ -12,8 +14,6 @@ def stat_result(mode=None,ino=None,dev=None,uid=None,gid=None,
 #
 # Stuff for messing with the clock and passage of time
 #
-
-import time
 
 def epochtime(s):
 
@@ -38,7 +38,7 @@ def epochtime(s):
                 t = time.struct_time((t0.tm_year,t0.tm_mon,t0.tm_mday,t.tm_hour,t.tm_min,t.tm_sec,t0.tm_wday,t0.tm_yday,t0.tm_isdst))
 
             t = time.mktime(t)
-            print "DEBUG: epochtime %s is %s" % (s,epochstr(t))
+            #print "DEBUG: epochtime %s is %s" % (s,epochstr(t))
             return t
         except:
             pass

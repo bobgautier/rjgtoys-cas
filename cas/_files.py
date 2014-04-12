@@ -145,7 +145,7 @@ class CasFSItem(object):
         if path is not None and stat is not None:
             self.update(path,stat)
 
-    def update(self,path,s):
+    def update(self,path,s,force_stale=False):
         """
         Update the info held here if necessary and
         return True if the content id is likely to have changed
@@ -153,7 +153,7 @@ class CasFSItem(object):
 
         self.path = path
         
-        self.stale = False
+        self.stale = force_stale
         if self.mtime is None or self.mtime != s.st_mtime:
             self.mtime = s.st_mtime
             self.stale = True
@@ -367,7 +367,7 @@ class CasFileTreeStore(CasStoreBase):
 
         return self._fetch(item)
 
-    def refresh(self):
+    def refresh(self,force=False):
         """
         Refresh metadata for this store.
         
@@ -400,12 +400,12 @@ class CasFileTreeStore(CasStoreBase):
                 newentries += 1
                 newbytes += s.st_size
                 log.info("New item %s" % (item.path))
-            elif item.update(p,s):
+            elif item.update(p,s,force):
                 # If the item needs a reread...
                 origentries += 1
                 origbytes += s.st_size
                 log.verbose("Updated item %s" % (item.path))
-
+            
             item.find_time = find_time
             t = time.time()
             if (t-log_time) > 1:
@@ -441,6 +441,8 @@ class CasFileTreeStore(CasStoreBase):
         
         refentries = 0
         refbytes = 0
+        staleentries = origentries + newentries
+        stalebytes = origbytes + newbytes
         
         refstart = time.time()
         
@@ -462,19 +464,20 @@ class CasFileTreeStore(CasStoreBase):
 
             t = time.time()
             if (t-log_time) > 1:
-                
-                countpc = int(refentries*100./origentries)    # percent done by count
-                bytespc = int(refbytes*100./origbytes)        # percent done by bytes
+                countpc = int(refentries*100./staleentries)    # percent done by count
+                bytespc = int(refbytes*100./stalebytes)        # percent done by bytes
         
-                reftogo = ((t-ref_start)*(origbytes-refbytes))/refbytes  #
+                reftogo = ((t-refstart)*(stalebytes-refbytes))/refbytes  #
                 eta = t+reftogo
                 
                 eta = time.strftime("%Y-%m-%d %H:%M:%S",time.localtime(eta))
                 
-                log.verbose("Refreshing: done %d/%d=%d%% %s/%s=%d%%\n in %ds, %ds to go ETA %s",
-                            (refentries, origentries, countpc,
-                                sizestr(refbytes),sizestr(origbytes),bytespc,
-                                t-ref_start,reftogo,eta))
+                log.verbose("Refreshing: done %d/%d=%d%% %s/%s=%d%% in %ds, %ds to go ETA %s" % (
+                            refentries, staleentries, countpc,
+                                sizestr(refbytes),sizestr(stalebytes),bytespc,
+                                t-refstart,reftogo,eta))
+                log_time = t
+
         log.info("Refresh completed.")
             
     def _fetch(self,item):

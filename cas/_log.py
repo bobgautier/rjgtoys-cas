@@ -13,12 +13,12 @@ _verbose = False
 
 def configure():
     logging.basicConfig(stream=sys.stdout,level=logging.DEBUG,
-        format="%(levelname)s: %(message)s")
+        format="%(asctime)s %(levelname)s: %(message)s")
 
 def set_verbose(verbose=None):
     global _verbose
     
-#    print "set_verbose: prev %s new %s" % (_verbose,verbose)
+    #print "set_verbose: prev %s new %s" % (_verbose,verbose)
     v = _verbose
     if verbose is not None:
         _verbose = verbose
@@ -27,17 +27,18 @@ def set_verbose(verbose=None):
 def set_debug(debug=None):
     global _debug
 
-#    print "set_debug: prev %s new %s" % (_debug,debug)
+    #print "set_debug: prev %s new %s" % (_debug,debug)
     d = _debug
     if debug is not None:
         _debug = debug
     return d
 
+# FIXME: define a VERBOSE priority level
 
 class MyAdapter(logging.LoggerAdapter):
 
     def verbose(self,msg):
-#        print "VERBOSE: %s %s" % (self.name,msg)
+        #print "VERBOSE: %s" % (msg)
         global _verbose
         if _verbose:
             self.info(msg)

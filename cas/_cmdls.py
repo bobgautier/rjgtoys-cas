@@ -44,7 +44,7 @@ class ListCommand(object):
 
     def run(self,opts):
         
-        cas = CasStore(opts.cas)
+        cas = CasStore(opts.cas,refresh=False)
         
         for i in cas:
             print i.printable()
