@@ -15,21 +15,6 @@ def configure():
     logging.basicConfig(stream=sys.stdout,level=logging.DEBUG,
         format="%(levelname)s: %(message)s")
 
-def add_options(p):
-    p.add_argument("--debug",help="Enable debug",
-        dest="_logdebug", action="store_true", default=None)
-            
-    p.add_option("--verbose",help="Verbose output",
-        dest="_logverbose", action="store_true", default=None)
-
-    return p
-    
-def handle_options(opts):
-    
-    set_verbose(opts._logverbose)
-    set_debug(opts._logdebug)
-
-
 def set_verbose(verbose=None):
     global _verbose
     
@@ -62,11 +47,26 @@ class MyAdapter(logging.LoggerAdapter):
         if _debug:
             super(MyAdapter,self).debug(msg)
 
+    def add_options(self,p):
+        p.add_argument("--debug",help="Enable debug",
+            dest="_logdebug", action="store_true", default=None)
+            
+        p.add_argument("--verbose",help="Verbose output",
+            dest="_logverbose", action="store_true", default=None)
+
+        return p
+    
+    def handle_options(self,opts):
+        
+        self.set_verbose(opts._logverbose)
+        self.set_debug(opts._logdebug)
+        
     def set_verbose(self,verbose=None):
         return set_verbose(verbose)
     
     def set_debug(self,debug=None):
         return set_debug(debug)
+
 
 def getLogger(name):
     if name == "__main__":

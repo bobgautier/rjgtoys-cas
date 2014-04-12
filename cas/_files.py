@@ -118,6 +118,11 @@ def sizestr(s,unit='B'):
             return ("%6.1f%s%s" % (f/threshold,suffix,unit)).strip()
     return "%d%s" % (s,unit)
 
+def timestr(t):
+    t = time.localtime(t)
+    
+    return time.strftime("%Y-%m-%d %H:%M:%S",t)
+
 class CasFSItem(object):
     """
     A filesystem item: the object contains all you need to know
@@ -237,6 +242,14 @@ class CasFSItem(object):
         self.gname = None
         self.stale = False
         self.stime = 0
+
+    
+    # One day I'll need to do a more general 'print an item'
+    # mechanism that will deal with items that know less (or more)
+    # about items than this one but for now I'll do something simple...
+    
+    def printable(self):
+        return "%s %s:%s %s %s %s" % (self.otype,self.uname,self.gname,sizestr(self.size),timestr(self.mtime),self.path)
 
     @property
     def expired(self):

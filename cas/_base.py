@@ -276,8 +276,11 @@ class CasStoreVolatile(CasStoreBase):
 def CasStore(x):
     print "CasStore",x
 
-    return ['%s%d' % (x,n) for n in range(0,10)]
-
+    if os.path.isdir(x):
+        from _files import CasFileTreeStore
+        return CasFileTreeStore(content=x)
+    
+    raise TypeError("Can't identify a store called '%s'" % (x))
 
 class CasJSONEncoder(json.JSONEncoder):
     
