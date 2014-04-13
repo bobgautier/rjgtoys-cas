@@ -70,7 +70,7 @@ def statdir(d):
     """ Generate a sequence of (path,stat) pairs
     for all entries in a directory and below
     """
-    d = os.path.normpath(str(d))
+    d = os.path.normpath(unicode(d))
     q = [d]
     
     suffix = len(d)+1
@@ -86,9 +86,25 @@ def statdir(d):
             # FIXME: stat again in case it's changed?
         
         for f in e:
-            f = str(f)
-            p = os.path.join(d,f)
-            
+            if isinstance(f,str):
+                f = unicode(f,errors='replace')
+                log.warning("In %s, fudging non-ascii filename '%s'" % (d,f))
+
+            try:
+                p = os.path.join(d,f)
+            except UnicodeDecodeError,e:
+#                f = unicode.decode(f,strict='replace')
+                print type(f)
+                f = unicode(f,errors='replace')
+                log.error("In directory %s:" % (d))
+                log.error("Bad filename %s" % (f))
+                log.error("Can I join them up?  %s / %s"  % (d,f))
+                raise
+            except Exception,e:
+                print type(e)
+                log.error("Can't handle name %s / %s: %s" % (d,f,e))
+                continue
+                
             try:
                 s = os.lstat(p)
             except Exception,e:
@@ -330,10 +346,45 @@ class CasFileTreeStore(CasStoreBase):
         
         path = os.path.join(self.content,self.metadata)
         
+        pathbak = path+'.bak'
+        pathtmp = path+'.tmp'
+        
+        log.debug("Saving metadata to %s" % (path)) 
         try:
-            with GzipFile(path,'wb') as f:
-                f.write(cas_to_json(self))
+            os.unlink(pathbak)
+            log.debug("Removed old backup file")
+        except:
+            pass
+        
+        try:
+            os.unlink(pathtmp)
+            log.debug("Removed old temp file")
+        except:
+            pass
+
+        try:
+            m = cas_to_json(self)
+            log.verbose("Metadata size %d bytes" % (len(m)))
+            fo = open(pathtmp,'wb')
+            with GzipFile(filename=pathtmp,fileobj=fo) as f:
+                f.write(m)
+                f.flush()
+            fo.flush()
+            fo.close()
             log.debug("Saved state to %s" % (path))
+
+            try:
+                os.rename(path,pathbak)
+                log.debug("Renamed old metadata to backup")
+            except Exception,e:
+                log.error("Failed to rename %s to %s" % (path,pathbak))
+
+            try:
+                os.rename(pathtmp,path)
+                log.debug("Renamed %s to %s" % (pathtmp,path))
+            except Exception,e:
+                log.error("Failed to rename %s to %s" % (pathtmp,path))
+
             return True
         except Exception,e:
             log.warning("Failed to save metadata %s: %s" % (path,e))
@@ -387,7 +438,7 @@ class CasFileTreeStore(CasStoreBase):
         find_time = time.time()
         
         log_time = find_time    # crude progress reporting
-        
+
         for (p,s) in statdir(self.content):
             log.debug("refresh found %s" % (p))
             fileid = (s.st_dev,s.st_ino)
@@ -446,7 +497,8 @@ class CasFileTreeStore(CasStoreBase):
         stalebytes = origbytes + newbytes
         
         refstart = time.time()
-        
+
+        cp_time = refstart
         for item in self.byfileid.itervalues():
             oldid = item.cid
             if item.stale:
@@ -477,12 +529,15 @@ class CasFileTreeStore(CasStoreBase):
                             refentries, staleentries, countpc,
                                 sizestr(refbytes),sizestr(stalebytes),bytespc,
                                 t-refstart,reftogo,eta))
-                if (t-log_time) > checkpoint:
+                if (checkpoint > 0) and ((t-cp_time) > checkpoint):
                     log.info("Doing checkpoint save")
                     if not self.save():
                         log.error("Cannot save metadata - giving up")
                         return
-
+                    cp_time = t
+                else:
+                    log.verbose("No checkpoint this time %d %d" % (checkpoint,t-cp_time))
+                    
                 log_time = t
 
         log.info("Refresh completed.")
@@ -495,7 +550,12 @@ class CasFileTreeStore(CasStoreBase):
         pass
 
     def __getstate__(self):
-        return dict(version=self.version,item=self.byfileid.values())
+        
+        items = self.byfileid.values()
+        
+        log.debug("__getstate__ saving %d items" % (len(items)))
+        
+        return dict(version=self.version,item=items)
     
     def __setstate__(self,state):
         assert state.version == self.version

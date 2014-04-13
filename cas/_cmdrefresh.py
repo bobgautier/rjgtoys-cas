@@ -48,11 +48,13 @@ class RefreshCommand(object):
 
     def run(self,opts):
         
-        cas = CasStore(opts.cas)
+        cas = CasStore(opts.cas,refresh=False)
         
         if opts.dryrun:
             opts.cp = 0
-            
+        
+        log.info("Checkpoint interval %d" % (opts.cp))
+        
         cas.refresh(force=opts.force,checkpoint=opts.cp)
         if not opts.dryrun:
             log.verbose("Saving changes")
