@@ -70,7 +70,7 @@ def statdir(d):
     """ Generate a sequence of (path,stat) pairs
     for all entries in a directory and below
     """
-    d = os.path.normpath(d)
+    d = os.path.normpath(str(d))
     q = [d]
     
     suffix = len(d)+1
@@ -86,6 +86,7 @@ def statdir(d):
             # FIXME: stat again in case it's changed?
         
         for f in e:
+            f = str(f)
             p = os.path.join(d,f)
             
             try:
@@ -367,7 +368,7 @@ class CasFileTreeStore(CasStoreBase):
 
         return self._fetch(item)
 
-    def refresh(self,force=False):
+    def refresh(self,force=False,checkpoint=0):
         """
         Refresh metadata for this store.
         
@@ -399,12 +400,12 @@ class CasFileTreeStore(CasStoreBase):
                 self.bypath[item.path] = item
                 newentries += 1
                 newbytes += s.st_size
-                log.info("New item %s" % (item.path))
+                log.debug("New item %s" % (item.path))
             elif item.update(p,s,force):
                 # If the item needs a reread...
                 origentries += 1
                 origbytes += s.st_size
-                log.verbose("Updated item %s" % (item.path))
+                log.debug("Updated item %s" % (item.path))
             
             item.find_time = find_time
             t = time.time()
@@ -421,7 +422,7 @@ class CasFileTreeStore(CasStoreBase):
             del self.byfileid[item.fileid]
             del self.bypath[item.path]
             del self.byid[item.cid]
-            log.info("Vanished item %s" % (item.path))
+            log.debug("Vanished item %s" % (item.path))
             lostentries += 1
             lostbytes += item.size
             
@@ -434,8 +435,8 @@ class CasFileTreeStore(CasStoreBase):
         
         log.verbose("Scan found %d/%s new %d/%s changed %d/%s deleted" % (
                 newentries, sizestr(newbytes),
-                lostentries,sizestr(lostbytes),
-                origentries, sizestr(origbytes)))
+                origentries, sizestr(origbytes),
+                lostentries,sizestr(lostbytes)))
 
         # refresh phase
         
@@ -476,6 +477,12 @@ class CasFileTreeStore(CasStoreBase):
                             refentries, staleentries, countpc,
                                 sizestr(refbytes),sizestr(stalebytes),bytespc,
                                 t-refstart,reftogo,eta))
+                if (t-log_time) > checkpoint:
+                    log.info("Doing checkpoint save")
+                    if not self.save():
+                        log.error("Cannot save metadata - giving up")
+                        return
+
                 log_time = t
 
         log.info("Refresh completed.")

@@ -27,7 +27,8 @@ class RefreshCommand(object):
 
         p.add_argument('-n','--dryrun',dest='dryrun',help="Dry run: don't write anything back",action="store_true",default=False)
         p.add_argument('-f','--force',dest='force',help="Force a full scan",action="store_true",default=False)
-
+        p.add_argument('-c','--checkpoint',dest='cp',help="Checkpoint data periodically (seconds)",default=0,action="store",type=int)
+        
         p.add_argument('cas',metavar='source',type=str,help="Source store")
         
     def parse_args(self,argv):
@@ -49,7 +50,10 @@ class RefreshCommand(object):
         
         cas = CasStore(opts.cas)
         
-        cas.refresh(force=opts.force)
+        if opts.dryrun:
+            opts.cp = 0
+            
+        cas.refresh(force=opts.force,checkpoint=opts.cp)
         if not opts.dryrun:
             log.verbose("Saving changes")
             cas.save()
