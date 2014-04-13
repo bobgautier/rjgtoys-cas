@@ -48,13 +48,26 @@ class DupsCommand(object):
         
         cas = CasStore(opts.cas,refresh=False)
         
-        seen = set()
+        seen = {}
+        
+        
         
         for i in cas:
-            
-            if i.cid in seen:
-                print "%s %s" % (i.cid,i.printable())
-            seen.add(i.cid)
+            if i.cid is None:
+                continue
+
+            try:
+                seen[i.cid].append(i.path)
+            except:
+                seen[i.cid] = [i.path]
+
+        for i,ps in seen.iteritems():
+            if len(ps) == 1:
+                continue
+
+            print i
+            for p in sorted(ps):
+                print "  ",p
 
 if __name__ == "__main__":
     c = DupsCommand()

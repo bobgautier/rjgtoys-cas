@@ -1,0 +1,15 @@
+There are a reasonable number of duplicates in my audio tree.
+
+I could write something to eliminate those by creating symlinks.
+
+When replicating to another store duplicates don't matter.
+
+When copying back, it might be worth always checking the local store
+before copying from a remote; that way when restoring my redundant audio
+files I'd at worst only create a copy, not copy it over a network more than
+once.
+
+But ideally I'd just create a link of some kind.
+
+I wonder how hard links will currently work?
+
