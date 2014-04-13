@@ -516,12 +516,15 @@ class CasFileTreeStore(CasStoreBase):
             cp_time = refstart
 
         for item in self.byfileid.itervalues():
+            if not item.stale:
+                continue
+                
+            log.info("Refresh item %s" % (item.path))
+            
             oldid = item.cid
-            if item.stale:
-                log.info("Refresh item %s" % (item.path))
-                item.refresh(self.content)
-                refentries += 1
-                refbytes += item.size
+            item.refresh(self.content)
+            refentries += 1
+            refbytes += item.size
 
             if oldid != item.cid:
                 try:
