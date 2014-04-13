@@ -104,7 +104,9 @@ def statdir(d):
                 print type(e)
                 log.error("Can't handle name %s / %s: %s" % (d,f,e))
                 continue
-                
+
+            assert isinstance(p,unicode)
+
             try:
                 s = os.lstat(p)
             except Exception,e:
@@ -139,6 +141,53 @@ def timestr(t):
     t = time.localtime(t)
     
     return time.strftime("%Y-%m-%d %H:%M:%S",t)
+
+def gzipread(path):
+    log.debug("gzipread %s" % (path))
+    with open(path,'rb') as f:
+        return f.read()
+        
+#    with GzipFile(path,'rb') as f:
+#        return f.read()
+
+def gzipwrite(path,data):
+
+    pathbak = path+'.bak'
+    pathtmp = path+'.tmp'
+    
+    log.debug("gzipwrite %s" % (path)) 
+    try:
+        os.unlink(pathbak)
+        log.debug("gzipwrite removed old backup")
+    except:
+        pass
+    
+    try:
+        os.unlink(pathtmp)
+        log.debug("gzipwrite removed old temp file")
+    except:
+        pass
+
+#    with GzipFile(pathtmp,'wb') as f:
+#        f.write(data)
+#        f.flush()
+
+    with open(pathtmp,'wb') as f:
+        f.write(data)
+        f.flush()
+
+    try:
+        os.rename(path,pathbak)
+        log.debug("gzipwrite renamed previous to backup")
+    except Exception,e:
+        if os.path.exists(path):
+            log.error("Failed to rename %s to %s" % (path,pathbak))
+
+    try:
+        os.rename(pathtmp,path)
+        log.debug("gzipwrite renamed temp to %s" % (path))
+    except Exception,e:
+        log.error("Failed to rename %s to %s" % (pathtmp,path))
 
 class CasFSItem(object):
     """
@@ -266,7 +315,9 @@ class CasFSItem(object):
     # about items than this one but for now I'll do something simple...
     
     def printable(self):
-        return "%s %s:%s %s %s %s" % (self.otype,self.uname,self.gname,sizestr(self.size),timestr(self.mtime),self.path)
+
+        p = unicode.encode(self.path,errors='replace')
+        return "%s %s:%s %s %s %s" % (self.otype,self.uname,self.gname,sizestr(self.size),timestr(self.mtime),p)
 
     @property
     def expired(self):
@@ -279,13 +330,8 @@ class CasFSItem(object):
         assert state.version == self.version
         self.__dict__.update(state)
         self.fileid = tuple(self.fileid) # JSON will represent this as a list
-        #
-        # Paths will have started off as ordinary strings, but JSON will
-        # have made them unicode; we can safely convert back (I claim)
-        #
-        if self.path is not None:
-            self.path = str(self.path)
 
+        
 class CasFileTreeStore(CasStoreBase):
 
     version="1"
@@ -323,14 +369,14 @@ class CasFileTreeStore(CasStoreBase):
         log.debug("Loading from %s" % (path))
         
         try:
-            with GzipFile(path) as f:
-                self.__setstate__(cas_from_json(f.read()))
+            data = gzipread(path)
+            self.__setstate__(cas_from_json(data))
             return True
         except Exception,e:
             if isinstance(e,IOError) and e.errno == 2:  # Not found
                 log.debug("(No metadata found at %s)" % (path))
                 return False
-            log.debug("Failed to load metadata %s:%s" % (path,e))
+            log.error("Failed to load metadata %s:%s" % (path,e))
 
         return False
         
@@ -346,44 +392,14 @@ class CasFileTreeStore(CasStoreBase):
         
         path = os.path.join(self.content,self.metadata)
         
-        pathbak = path+'.bak'
-        pathtmp = path+'.tmp'
-        
-        log.debug("Saving metadata to %s" % (path)) 
-        try:
-            os.unlink(pathbak)
-            log.debug("Removed old backup file")
-        except:
-            pass
-        
-        try:
-            os.unlink(pathtmp)
-            log.debug("Removed old temp file")
-        except:
-            pass
 
         try:
             m = cas_to_json(self)
             log.verbose("Metadata size %d bytes" % (len(m)))
-            fo = open(pathtmp,'wb')
-            with GzipFile(filename=pathtmp,fileobj=fo) as f:
-                f.write(m)
-                f.flush()
-            fo.flush()
-            fo.close()
+
+            gzipwrite(path,m)
+            
             log.debug("Saved state to %s" % (path))
-
-            try:
-                os.rename(path,pathbak)
-                log.debug("Renamed old metadata to backup")
-            except Exception,e:
-                log.error("Failed to rename %s to %s" % (path,pathbak))
-
-            try:
-                os.rename(pathtmp,path)
-                log.debug("Renamed %s to %s" % (pathtmp,path))
-            except Exception,e:
-                log.error("Failed to rename %s to %s" % (pathtmp,path))
 
             return True
         except Exception,e:
@@ -498,7 +514,13 @@ class CasFileTreeStore(CasStoreBase):
         
         refstart = time.time()
 
-        cp_time = refstart
+        if checkpoint:
+            log.info("Doing first checkpoint save")
+            if not self.save():
+                log.error("Cannot save metadata - giving up")
+                return
+            cp_time = refstart
+
         for item in self.byfileid.itervalues():
             oldid = item.cid
             if item.stale:
@@ -553,7 +575,7 @@ class CasFileTreeStore(CasStoreBase):
         
         items = self.byfileid.values()
         
-        log.debug("__getstate__ saving %d items" % (len(items)))
+        log.info("__getstate__ saving %d items" % (len(items)))
         
         return dict(version=self.version,item=items)
     
@@ -563,8 +585,14 @@ class CasFileTreeStore(CasStoreBase):
         self.byid = {}
         self.bypath = {}
         
+        log.info("__setstate__ loading %d items" % (len(state.item)))
+        
         for i in state.item:
+#            print "Load %s" % (i)
             ci = CasFSItem(saved=i)
             self.byid[ci.cid] = ci
             self.bypath[ci.path] = ci
             self.byfileid[ci.fileid] = ci
+        
+        log.info("loaded %d ids, %d paths, %d fileids" % (len(self.byid),len(self.bypath),len(self.byfileid)))
+        

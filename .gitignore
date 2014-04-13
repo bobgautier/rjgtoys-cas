@@ -1,0 +1,9 @@
+tests/unit/__pycache__
+cas.egg-info
+htmlcov
+ls.out
+.coverage
+*pyc
+jpretty.py
+listdir.py
+p.j

@@ -8,7 +8,7 @@ import subprocess
 from contextlib import contextmanager
 
 from cas._base import cas_to_json
-from cas._files import CasFileTreeStore, OTYPE_FILE, OTYPE_LINK, OTYPE_DIR, DEFAULT_METADATA
+from cas._files import CasFileTreeStore, OTYPE_FILE, OTYPE_LINK, OTYPE_DIR, DEFAULT_METADATA, gzipread, gzipwrite
 
 import cas
 
@@ -111,3 +111,30 @@ def test_cas_filetree():
         assert 'one' not in tpaths
 
         #assert False
+
+#
+# Test the gzip file stuff.  I had trouble with this,
+# hence the strange test case.
+#
+
+def test_gzipio():
+    
+    path = os.tmpnam()
+    
+    data = ""
+    
+    for i in range(0,10):
+        data += "Line %d\n" % (i)
+        
+        gzipwrite(path,data)
+        
+        got = gzipread(path)
+        
+        assert got == data
+        
+    os.unlink(path+'.bak')  # must exist by now
+    os.unlink(path)         # must exist by now
+    
+    assert not os.path.exists(path+'.tmp')
+    
+    

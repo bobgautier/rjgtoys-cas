@@ -47,8 +47,13 @@ class ListCommand(object):
         cas = CasStore(opts.cas,refresh=False)
         
         for i in cas:
-            print i.printable()
-
+            try:
+                print i.printable()
+            except Exception,e:
+                print >>sys.stderr, "Error: %s" % (e)
+                print >>sys.stderr, type(i.path)
+                print >>sys.stderr, u"Path: %s" % (i.path)
+                break
             
 if __name__ == "__main__":
     c = ListCommand()
