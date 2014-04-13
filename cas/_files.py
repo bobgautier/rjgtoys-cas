@@ -144,11 +144,9 @@ def timestr(t):
 
 def gzipread(path):
     log.debug("gzipread %s" % (path))
-    with open(path,'rb') as f:
-        return f.read()
         
-#    with GzipFile(path,'rb') as f:
-#        return f.read()
+    with GzipFile(path,'rb') as f:
+        return f.read()
 
 def gzipwrite(path,data):
 
@@ -168,11 +166,7 @@ def gzipwrite(path,data):
     except:
         pass
 
-#    with GzipFile(pathtmp,'wb') as f:
-#        f.write(data)
-#        f.flush()
-
-    with open(pathtmp,'wb') as f:
+    with GzipFile(pathtmp,'wb') as f:
         f.write(data)
         f.flush()
 
