@@ -1,134 +1,101 @@
+import time
+from cas._tracker import ProgressTracker, ActionFailedError
 
 import threading
-import time
+import pytest
+import Queue
 
-class ProgressSample(object):
+def triv(pt):
+    pt.set_goal(1)
+
+
+triv = ProgressTracker(target=triv)
+    # FIXME: needs to be a decorator
     
-    def __init__(self,since,updated,done,steps):
-        self.since = since
-        self.updated = updated
-        self.done = done
-        self.steps = steps
-    
-        self.pcdone = int(done*100/steps)
-        t = time.time()
-        if self.pcdone:
-            self.eta = ((updated-since)*100)/self.pcdone
-        else:
-            self.eta = t    # Needs to be a time
+def test_triv():
+
+    triv()
+
+def startfails(pt,raiseit):
+    if raiseit:
+        raise Exception("failure in action")
         
-        self.ttg = self.eta - t
-        self.elapsed = t-self.since
+    return  # Fails to call set_goal
 
-class ProgressTracker(object):
-    
-    def __init__(self,steps=100,stop=None):
-        self.steps = steps
-        self.stop = stop
-        self.lock = threading.RLock()
-        self.reset()
+startfails = ProgressTracker(target=startfails)
 
-    def reset(self,done=0):
-        with self.lock:
-            self.done = done
-            self.since = time.time()
-            self.updated = self.since
-
-    def update(self,done=1):
-        with self.lock:
-            self.done += done
-            if self.done < 0:
-                self.done = 0
-            elif self.done > self.steps:
-                self.done = self.steps
-            self.updated = time.time()
-            
-    def stop(self):
-        if self.stop is None:
-            raise Exception("Can't stop this process")
-        self.stop()
+def test_startfails_return():
     
-    def sample(self):
-        with self.lock:
-            s = ProgressSample(
-                self.since,
-                self.updated,
-                self.done,
-                self.steps)
-        return s
-
-class AlreadyWorkingError(Exception):
-    pass
-
-class SlowOperation(object):
-    
-    def __init__(self):
-        self.stopping = threading.Event()
-        self._working = threading.Lock()
-    
-    def work(self,interval,count):
-        self.work_start(interval,count)
-        return self.work_wait()
-    
-    def working(self):
-        w = False
+    with pytest.raises(ActionFailedError):
+        startfails.start(False)
         
-        w = not self._working.acquire(0)
-        if not w:
-            self._working.release()
-        return w
+def test_startfails_exception():
+    with pytest.raises(ActionFailedError):
+        startfails.start(True)
 
-    def work_start(self,interval,count):
-
-        if not self._working.acquire(0):
-            raise AlreadyWorkingError()
-
-        self.pt = ProgressTracker(steps=count,stop=self.work_cancel)
-        
-        self.worker = threading.Thread(target=self.do_work,args=(interval,count))
-        self.worker.start()
-
-        return self.pt
-
-    def do_work(self,interval,count):
-
-        try:
-            return self._do_work(interval,count)
-        finally:
-            self._working.release()
-            
-    def _do_work(self,interval,count):
-        for i in range(0,count):
-            if self.stopping.is_set():
-                return
-
-            time.sleep(interval)
-            self.pt.update(1)
-            print "worker has done %d" % (i)
-
-    def work_wait(self):
-
-        self.worker.join()
-
-    def work_cancel(self):
-        
-        self.stopping.set()
-
-s = SlowOperation()
-
-
-s.work(1,2)
-
-
-pt = s.work_start(0.7,10)
-
-while True:
-    p = pt.sample()
-    if p.pcdone == 100:
-        break
-        
-    print "%d/%d in %ds %d%%" % (p.done,p.steps,p.elapsed,p.pcdone)
-    time.sleep(0.5)
-    print "Working",s.working()
+@ProgressTracker
+def decorated(pt,q):
+    g = q.get()
+    q.task_done()
     
-s.work_wait()
+    pt.set_goal(g)
+    
+    n = 0
+    while n < g:
+        i = q.get()
+        n += 1
+        pt.update(1)
+        q.task_done()
+        
+def test_decorated():
+    q = Queue.Queue()
+    q.put(2)
+    
+    decorated.start(q)
+    
+    q.join()        # wait for step count to be consumed
+    
+    for _ in range(0,2):
+        q.put(1)    # step the thread
+        q.join()    # wait for it to be done
+
+        decorated.sample()  # sample progress
+        
+        
+
+def stepper(pt,steps,cond,signal):
+    pt.set_goal(steps)
+    cond.acquire()
+    signal.acquire()
+    done = 0
+    while done < steps:
+        signal.acquire()
+        cond.wait()
+        done += 1
+        print "stepper done %d" % (done)
+        pt.update(1)
+        signal.notify()
+        signal.release()
+        
+stepper = ProgressTracker(target=stepper)
+
+def xtest_stepper():
+    
+    control = threading.Condition()
+    signal = threading.Condition()
+    
+    control.acquire()
+    signal.acquire()
+    
+    s = stepper.start(5,control,signal)
+    
+    assert s.started()
+    
+    for i in range(1,4):
+        control.acquire()
+        control.notify()
+        control.release()
+        
+        signal.wait()
+        signal.release()
+        s.sample()
