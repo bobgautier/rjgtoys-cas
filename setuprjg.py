@@ -29,11 +29,12 @@ class PyTest(TestCommand):
         import re
         
         wd = os.path.dirname(__file__)
+        toys = os.path.join(wd,'rjgtoys')
         cov_file = os.path.join(wd,'.coverage')
         if os.path.exists(cov_file):
             os.unlink(cov_file)
 
-        packages = [d for d in os.listdir(os.path.join(wd,'rjgtoys')) if os.path.isdir(os.path.join(wd,d))]
+        packages = [d for d in os.listdir(toys) if os.path.isdir(os.path.join(toys,d))]
         
         cov = coverage.coverage(include=['rjgtoys/*','tests/unit/fixture*'])
         cov.start()
