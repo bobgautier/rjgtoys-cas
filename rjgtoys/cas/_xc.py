@@ -2,7 +2,7 @@
 # exceptions associated with cas
 #
 
-import xc
+from rjgtoys import xc
 
 class CasXC(xc.BaseXC):
     pass
