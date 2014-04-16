@@ -1,71 +1,16 @@
 #!/usr/bin/python
 
-# See: http://pythonhosted.org/an_example_pypi_project/setuptools.html
-
-import os
 from setuptools import setup
 
-# Utility function to read the README file.
-# Used for the long_description.  It's nice, because now 1) we have a top level
-# README file and 2) it's easier to type in the README file than to put a raw
-# string in below ...
-def read(fname):
-    return open(os.path.join(os.path.dirname(__file__), fname)).read()
-
-# See: http://pytest.org/latest/goodpractises.html
-
-from setuptools.command.test import test as TestCommand
-import sys
-
-class PyTest(TestCommand):
-    def finalize_options(self):
-        TestCommand.finalize_options(self)
-        self.test_args = ['-s'] # preserve stdout
-        self.test_suite = True
-    def run_tests(self):
-        #import here, because outside the eggs aren't loaded
-        import pytest
-        import coverage
-        import time
-        import re
-        
-        wd = os.path.dirname(__file__)
-        cov_file = os.path.join(wd,'.coverage')
-        if os.path.exists(cov_file):
-            os.unlink(cov_file)
-
-        packages = os.listdir(os.path.join(wd,'rjgtoys'))
-        
-        cov = coverage.coverage(include=['rjgtoys/*','tests/unit/fixture*'])
-        cov.start()
-        errno = pytest.main(self.test_args)
-        cov.stop()
-        cov.save()
-        cov_title = "Coverage report for %s created at %s" % (",".join(packages),time.strftime("%Y-%m-%d %H:%M:%S"))
-        
-        cov_dir = os.path.join(os.path.dirname(__file__),'htmlcov')
-        cov.html_report(directory=cov_dir)
-            
-        # Now fix up the report to have a nice title
-        
-        index_html = os.path.join(cov_dir,'index.html')
-        
-        report = open(index_html).read()
-        report = re.sub('Coverage report',cov_title,report)
-        
-        with open(index_html,"w") as f:
-            f.write(report)
-        
-        sys.exit(errno)
-
+from setuprjg import PyTest, readfile
 
 setup(
-    name = "cas",
+    name = "rjgtoys.cas",
     version = "0.0.1",
     author = "Bob Gautier",
     author_email = "bob@rjg-resources.com",
     description = ("Content-addressable storage"),
-    long_description = read('README'),
+    long_description = readfile('README'),
     license = "GPL",
     keywords = "cas",
     namespace_packages=['rjgtoys'],
@@ -75,6 +20,6 @@ setup(
         "License :: OSI Approved :: GNU General Public License v2 or later (GPLv2+)"
         ],
     tests_require=['pytest'],
+    # The following configures testing the way I like it
     cmdclass = {'test':PyTest},
-
 )

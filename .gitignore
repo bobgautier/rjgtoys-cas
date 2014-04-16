@@ -1,5 +1,4 @@
 tests/unit/__pycache__
-cas.egg-info
 htmlcov
 ls.out
 .coverage
@@ -10,3 +9,4 @@ p.j
 build
 dist
 audio-dups
+rjgtoys.cas.egg-info/
