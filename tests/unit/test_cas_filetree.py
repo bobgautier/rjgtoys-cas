@@ -7,10 +7,10 @@ import os
 import subprocess
 from contextlib import contextmanager
 
-from cas._base import cas_to_json
-from cas._files import CasFileTreeStore, OTYPE_FILE, OTYPE_LINK, OTYPE_DIR, DEFAULT_METADATA, gzipread, gzipwrite
+from rjgtoys.cas._base import cas_to_json
+from rjgtoys.cas._files import CasFileTreeStore, OTYPE_FILE, OTYPE_LINK, OTYPE_DIR, DEFAULT_METADATA, gzipread, gzipwrite
 
-import cas
+import rjgtoys.cas
 
 
 @contextmanager
@@ -56,8 +56,8 @@ def assert_item_by_path(s,p,otype):
     assert i.otype == otype
 
 def test_cas_filetree():
-    log = cas.log.getLogger("__main__")
-    cas.log.configure()
+    log = rjgtoys.cas.log.getLogger("__main__")
+    rjgtoys.cas.log.configure()
     log.set_debug(True)
     log.set_verbose(True)
     log.verbose("Starting file tree test")

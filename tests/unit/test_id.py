@@ -2,8 +2,8 @@
 # Tests for the id generators
 #
 
-from cas._base import cas_string_to_id, CasItemBuilder, CasId, LITERALSIZE
-from cas._files import CasFSItem, OTYPE_FILE, OTYPE_LINK, OTYPE_DIR
+from rjgtoys.cas._base import cas_string_to_id, CasItemBuilder, CasId, LITERALSIZE
+from rjgtoys.cas._files import CasFSItem, OTYPE_FILE, OTYPE_LINK, OTYPE_DIR
 
 import base64
 

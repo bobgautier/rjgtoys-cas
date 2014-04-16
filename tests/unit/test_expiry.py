@@ -1,5 +1,5 @@
 
-from cas._expiry import NEVER, UNKNOWN, EXPIRED, expire_relative, expired, expiry, InvalidExpiryError
+from rjgtoys.cas._expiry import NEVER, UNKNOWN, EXPIRED, expire_relative, expired, expiry, InvalidExpiryError
 
 from mock import patch, Mock
 import pytest

@@ -5,7 +5,7 @@
 # nasty side-effects on later tests.
 #
 
-from cas._files import getuserbyid, getgroupbyid
+from rjgtoys.cas._files import getuserbyid, getgroupbyid
 from mock import Mock, patch
 import pytest
 import pwd

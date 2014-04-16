@@ -2,7 +2,7 @@
 # test the json mechanics
 #
 
-from cas._base import CasJson
+from rjgtoys.cas._base import CasJson
 
 def test_jsonobj():
 

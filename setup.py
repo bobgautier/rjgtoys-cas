@@ -29,18 +29,19 @@ class PyTest(TestCommand):
         import time
         import re
         
-        package = 'cas'      # FIXME - get this from setup params
-        
-        cov_file = os.path.join(os.path.dirname(__file__),'.coverage')
+        wd = os.path.dirname(__file__)
+        cov_file = os.path.join(wd,'.coverage')
         if os.path.exists(cov_file):
             os.unlink(cov_file)
 
-        cov = coverage.coverage(include=['%s/*' % (package),'tests/unit/fixture*'])
+        packages = os.listdir(os.path.join(wd,'rjgtoys'))
+        
+        cov = coverage.coverage(include=['rjgtoys/*','tests/unit/fixture*'])
         cov.start()
         errno = pytest.main(self.test_args)
         cov.stop()
         cov.save()
-        cov_title = "Coverage report for %s created at %s" % (package,time.strftime("%Y-%m-%d %H:%M:%S"))
+        cov_title = "Coverage report for %s created at %s" % (",".join(packages),time.strftime("%Y-%m-%d %H:%M:%S"))
         
         cov_dir = os.path.join(os.path.dirname(__file__),'htmlcov')
         cov.html_report(directory=cov_dir)
@@ -67,7 +68,8 @@ setup(
     long_description = read('README'),
     license = "GPL",
     keywords = "cas",
-    packages = ['cas'],
+    namespace_packages=['rjgtoys'],
+    packages = ['rjgtoys.cas'],
     classifiers = [
         "Development Status :: 2 - Pre-Alpha",
         "License :: OSI Approved :: GNU General Public License v2 or later (GPLv2+)"

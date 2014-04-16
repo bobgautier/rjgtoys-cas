@@ -2,8 +2,8 @@
 # Basic tests on stores
 #
 
-from cas._base import CasStoreVolatile
-from cas._expiry import NEVER
+from rjgtoys.cas._base import CasStoreVolatile
+from rjgtoys.cas._expiry import NEVER
 
 def test_store_short():
     

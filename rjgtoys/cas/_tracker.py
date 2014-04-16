@@ -97,7 +97,7 @@ class ProgressTracker(object):
         
         *MUST* be called by the action.
         
-        The main lock is already held.
+        The main lock is already held by the starting thread.
         """
 
         if steps is not None:
