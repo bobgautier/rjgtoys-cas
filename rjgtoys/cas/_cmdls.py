@@ -6,9 +6,9 @@ from argparse import ArgumentParser
 
 from _base import CasStore
 
-from _log import getLogger
+from rjgtoys import logs
 
-log = getLogger(__name__)
+log = logs.getLogger(__name__)
 
 class ListCommand(object):
     

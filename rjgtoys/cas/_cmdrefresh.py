@@ -8,7 +8,9 @@ from _base import CasStore
 
 import cas
 
-log = cas.log.getLogger(__name__)
+from rjgtoys import logs
+
+log = logs.getLogger(__name__)
 
 class RefreshCommand(object):
     

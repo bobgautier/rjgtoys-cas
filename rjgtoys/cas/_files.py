@@ -14,9 +14,9 @@ from gzip import GzipFile
 
 from _base import CasStoreBase, cas_link_to_id, cas_file_to_id, cas_to_json, cas_from_json
 
-import rjgtoys.cas
+from rjgtoys import logs
 
-log = rjgtoys.cas.log.getLogger(__name__)
+log = logs.getLogger(__name__)
 
 # Default relative path to metadata file
 
