@@ -2,6 +2,14 @@
 # base classes for cas
 #
 
+"""
+
+This is the documentation for rjgtoys.cas._base
+
+.. autoclass:: CasItemBuilder
+
+"""
+
 from _xc import CasErrorXC, ItemNotFoundError
 from _expiry import expired
 
@@ -16,20 +24,50 @@ import json
 
 BLOCKSIZE=1024*1024*128
 
-#
-# The following constant is the minimu length of data
-# at which it is worth using the SHA512 hash instead of
-# the data itself.
-#
-# When we use the data itself, we base64 encode it,
-# which will expand it by a third, so the break even
-# point is when the expanded data will be as long
-# as a base64 encoded SHA512 checksum
-#
+__doc__ +="""
+
+.. :py:data:: LITERALSIZE
+
+For very short pieces of data, the 'usual' way of generating
+a content id, by taking the SHA512 hash and ``base64`` encoding it,
+would produce a content id that is longer than the data itself.
+
+`LITERALSIZE` is the break-even length.
+
+Data items shorter than this length will be encoded into content
+ids by using the data directly.
+
+This is admittedly a security/privacy risk since unlike other kinds
+of content id, these 'literal' content ids can easily be converted
+back into the original data.
+
+The reason the literal content ids are still ``base64`` encoded is to ensure
+that they don't contain awkward characters.
+
+"""
 
 LITERALSIZE=66
 
 # Id types
+
+__doc__+="""
+
+Each content id starts with a character that identifies the kind
+of content id.
+
+There are currently three kinds defined:
+
++------------------+-------------+------------------------------------------------------------------+
+| Name             | Starts with | Description                                                      |
++==================+=============+==================================================================+
+| `CAS_ID_LITERAL` | `L`         | This is a literal id, constructed directly from the (short) data |
++------------------+-------------+------------------------------------------------------------------+
+| `CAS_ID_SHA512`  | `I`         | This id is a base64-encoded SHA512 hash of the data              |
++------------------+-------------+------------------------------------------------------------------+
+| `CAS_ID_EMPTY`   | `Z`         | The data was zero length; the id for that is simply `Z`          |
++------------------+-------------+------------------------------------------------------------------+
+
+"""
 
 CAS_ID_LITERAL='L'  # Prefix for literal ids
 CAS_ID_SHA512='I'   # Prefix for sha512 ids
@@ -37,17 +75,42 @@ CAS_ID_EMPTY='Z'    # (Prefix for) the id for theempty string
 
 class CasItemBuilder(object):
     
+    """
+    Constructs the content id of a string.
+    
+    The content may be passed to the constructor or fed in incrementally
+    using :meth:`add`, or some combination of the two.
+
+    A :class:`CasItemBuilder` may be reused by calling its :meth:`reset`
+    before starting each new item.
+
+    .. automethod:: reset
+    .. automethod:: add
+    .. autoattribute:: size
+    .. autoattribute:: cid
+    
+    """
+
     def __init__(self,content=None):
+        
         self.reset()
         if content is not None:
             self.add(content)
             
     def reset(self):
+        """Resets the state of the :class:`CasItemBuilder` so that it
+        can be used to generate the cid and size of another data string.
+        """
+        
         self.h = hashlib.sha512()
         self.bc = 0
         self.content = ''
         
     def add(self,content):
+        """Adds more content to the item being examined; changes the
+        :attr:`size` and :attr:`cid` properties.
+        """
+
         self.h.update(content)
         self.bc += len(content)
         if self.bc < LITERALSIZE:
@@ -55,10 +118,17 @@ class CasItemBuilder(object):
             
     @property
     def size(self):
+        """The number of bytes scanned so far (since the last :meth:`reset`) (Readonly)
+        """
+
         return self.bc
         
     @property
     def cid(self):
+        """The content id of the data examined so far (since
+        the last :meth:`reset`) (Readonly)
+        """
+
         if self.bc == 0:
             return CAS_ID_EMPTY
         if self.bc < LITERALSIZE:
@@ -164,10 +234,14 @@ def CasId(ci):
     raise TypeError("%s is not a caS Id" % (ci))
 
 class CasStoreBase(object):
+    """
+    This is the base class of CAS implementations.   It defines
+    the most basic interface to a CAS.
+    """
     
     def items(self):
         """
-        Generate sequence of objects in this store
+        Generate the sequence of objects in this store
         """
         
         pass
@@ -176,7 +250,7 @@ class CasStoreBase(object):
         """
         Get the data associated with this ci
         
-        Can raise ItemNotFoundError or ItemCorruptedError
+        Can raise :exception:`ItemNotFoundError` or :exception:`ItemCorruptedError`
         """
         
         return None
@@ -196,6 +270,8 @@ class CasStoreBase(object):
         return self.put(s.read(),expiry,size,cid)
                 
     def __contains__(self,cid):
+        """Implements the *in* operator"""
+
         return False
 
 
@@ -274,6 +350,12 @@ class CasStoreVolatile(CasStoreBase):
 
 
 def CasStore(x,**kwargs):
+    """Factor functions that produces a :class:`CasStoreBase` implementation
+    based on the parameters it is passed.
+    
+    Currently it will only produce :class:`CasFileTreeStore` instances.
+    """
+    
     print "CasStore",x
 
     if os.path.isdir(x):

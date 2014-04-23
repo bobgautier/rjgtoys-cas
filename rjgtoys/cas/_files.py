@@ -2,6 +2,12 @@
 # file tree cas
 #
 
+"""
+
+This is the docstring for _files.py
+
+"""
+
 import sys
 import os
 import stat
