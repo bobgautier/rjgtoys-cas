@@ -4,7 +4,16 @@
 
 """
 
-This is the documentation for rjgtoys.cas._base
+Dealing with Item IDs
+---------------------
+
+This section describes various components that help deal with content ids.
+
+Terminology first: the word `id` is the name of a builtin function in Python and to avoid
+complaints (or at least misleading highlighting) from various tools I've
+used the name 'cid' for CAS content ids.
+
+
 
 .. autoclass:: CasItemBuilder
 
@@ -138,11 +147,16 @@ class CasItemBuilder(object):
 
 
 def cas_string_to_id(s):
-
+    """ Convenience function that returns the content id of a string """
+    
     return CasItemBuilder(s).cid
 
 def cas_link_to_id(p,bc=None):
-    
+    """ Convenience function that returns the content id of the destination
+    of a symbolic link.   If `os.readlink('foo') returns 'bar' then
+    `cas_link_to_id('foo') will return `cas_string_to_id('bar')`
+    """
+     
     if bc == 0:
         return CAS_ID_EMPTY
         
@@ -153,6 +167,9 @@ def cas_link_to_id(p,bc=None):
     return cas_string_to_id(d)
     
 def cas_file_to_id(p,bc=None):
+    """
+    Return the content id of a file specified by path.
+    """
 
     if bc == 0:
         return CAS_ID_EMPTY

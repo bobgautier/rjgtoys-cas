@@ -8,7 +8,7 @@ Contents:
 
    whatiscas
    whycas
-   basics
+   devguide
    notes/index
 
    
